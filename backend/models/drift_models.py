@@ -17,13 +17,20 @@ class DistributionData(BaseModel):
     current_percents: list[float]
 
 
+class CategoryDistribution(BaseModel):
+    """Categorical distribution data."""
+    categories: list[str]
+    reference_percentages: list[float]
+    current_percentages: list[float]
+
+
 class FeatureResult(BaseModel):
     """Per-feature drift analysis result."""
     name: str
     type: str                       # "numeric" | "categorical"
 
     # --- Primary drift metric (always present) ---
-    psi: float
+    psi: Optional[float] = None
     status: str                     # "STABLE" | "WARNING" | "DRIFT"
     severity: str                   # "NEGLIGIBLE" | "LOW" | "MODERATE" | "HIGH" | "CRITICAL"
 
@@ -45,7 +52,8 @@ class FeatureResult(BaseModel):
     current_missing_percent: float = 0.0
 
     # --- Distribution data for the chart ---
-    distribution: DistributionData
+    distribution: Optional[DistributionData] = None
+    category_distribution: Optional[CategoryDistribution] = None
 
 
 class SchemaInfo(BaseModel):
@@ -69,8 +77,9 @@ class DriftAnalysisResponse(BaseModel):
     features_analyzed: int
     features_drifted: int
 
-    max_psi: float
+    max_psi: Optional[float] = None
     psi_threshold: float
+    categorical_js_threshold: float
 
     overall_status: str             # "DRIFT_DETECTED" | "NO_SIGNIFICANT_DRIFT"
     elapsed_ms: float

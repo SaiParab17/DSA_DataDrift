@@ -80,8 +80,8 @@ ${renderNav('results')}
             </div>
             <p class="font-body-lg text-body-lg text-on-surface font-semibold mt-0.5">
               ${hasDrift
-                ? `${result.features_drifted} of ${result.features_analyzed} features exceed the ${result.psi_threshold} PSI threshold. Top contributor: <span class="bg-surface-container-lowest px-1 py-0.5 border border-on-surface font-code-sm">${firstFeature ? firstFeature.name + ' (PSI: ' + firstFeature.psi.toFixed(3) + ')' : '—'}</span>.`
-                : `All ${result.features_analyzed} features are within the PSI threshold of ${result.psi_threshold}. Distribution drift is within normal variation.`
+                ? `${result.features_drifted} of ${result.features_analyzed} features detected as drifted. Numerical features use PSI; categorical features use JS divergence. Top contributor: <span class="bg-surface-container-lowest px-1 py-0.5 border border-on-surface font-code-sm">${firstFeature ? firstFeature.name + (firstFeature.type === 'numeric' ? ' (PSI: ' + firstFeature.psi.toFixed(3) + ')' : ' (JS: ' + firstFeature.js_divergence.toFixed(3) + ')') : '—'}</span>.`
+                : `No features detected as drifted. Numerical features use PSI; categorical features use JS divergence.`
               }
             </p>
           </div>
@@ -194,9 +194,9 @@ ${renderNav('results')}
             <p class="text-surface-dim m-0 leading-tight" id="terminal-log">
               [INFO] RUN_ID: ${result.analysis_id} — Analysis complete<br/>
               [INFO] REF: ${result.reference_file} (${result.reference_rows} rows) | CUR: ${result.current_file} (${result.current_rows} rows)<br/>
-              [INFO] Features analyzed: ${result.features_analyzed} | Drifted: ${result.features_drifted} | Max PSI: ${result.max_psi.toFixed(4)}<br/>
+              [INFO] Features analyzed: ${result.features_analyzed} | Drifted: ${result.features_drifted} | Max PSI: ${result.max_psi !== null ? result.max_psi.toFixed(4) : 'N/A'}<br/>
               ${hasDrift
-                ? `[ALERT] Drift status: POSITIVE. Overall: ${result.overall_status}`
+                ? `[ALERT] Drift detected. Overall: ${result.overall_status}`
                 : `[INFO] Drift status: NEGATIVE. Overall: ${result.overall_status}`
               }
             </p>
@@ -243,6 +243,7 @@ ${renderFooter()}
   // All features from the API result stored in JS
   var features = ${JSON.stringify(features)};
   var psiThreshold = ${result.psi_threshold};
+  var catJsThreshold = ${result.categorical_js_threshold};
   var currentFilter = 'all';
   var selectedFeatureIdx = ${firstFeature ? 0 : -1};
 
@@ -282,17 +283,23 @@ ${renderFooter()}
   }
 
   function buildRow(f, globalIdx) {
+    var primaryMetric = f.type === 'numeric' ? f.psi : f.js_divergence;
     var psiColor = f.status === 'DRIFT' ? 'text-[#ba1a1a]' : (f.status === 'WARNING' ? 'text-[#b58b00]' : 'text-on-surface');
     var badgeBg  = _severityBg(f.severity);
     var statusBg = f.status === 'DRIFT' ? (f.severity === 'CRITICAL' ? 'bg-[#FF5277]' : 'bg-[#FFE600]') : 'bg-[#00D26A]';
     var rowBg    = f.status === 'DRIFT' ? 'bg-primary-container/10' : 'bg-surface-container-lowest';
     var borderL  = f.status === 'DRIFT' ? 'border-l-[6px] border-l-[#FF5277]' : '';
-    var ksPval   = f.ks_p_value !== null && f.ks_p_value !== undefined ? f.ks_p_value.toFixed(3) : 'N/A';
+    
+    var ksPval = 'N/A';
+    if (f.type === 'numeric' && f.ks_p_value !== null && f.ks_p_value !== undefined) {
+      ksPval = f.ks_p_value < 0.0001 ? '<0.0001' : f.ks_p_value.toFixed(4);
+    }
+
     var isSelected = globalIdx === selectedFeatureIdx;
     return '<tr class="' + rowBg + ' ' + borderL + ' hover:bg-primary-container/20 cursor-pointer transition-colors' + (isSelected ? ' outline outline-2 outline-secondary' : '') + '" data-feature-idx="' + globalIdx + '">' +
       '<td class="p-space-sm border-r-2 border-on-surface font-bold text-on-surface">' + f.name + (f.status === 'DRIFT' ? '<span class="material-symbols-outlined text-[14px] text-[#FF5277] align-middle ml-1">arrow_forward</span>' : '') + '</td>' +
       '<td class="p-space-sm border-r-2 border-on-surface uppercase">' + f.type + '</td>' +
-      '<td class="p-space-sm border-r-2 border-on-surface text-right font-bold ' + psiColor + '">' + f.psi.toFixed(3) + '</td>' +
+      '<td class="p-space-sm border-r-2 border-on-surface text-right font-bold ' + psiColor + '">' + (f.type === 'numeric' ? 'PSI ' : 'JS ') + primaryMetric.toFixed(3) + '</td>' +
       '<td class="p-space-sm border-r-2 border-on-surface text-right">' + ksPval + '</td>' +
       '<td class="p-space-sm border-r-2 border-on-surface text-center"><span class="inline-block ' + statusBg + ' text-on-surface border border-on-surface font-label-caps text-label-caps font-bold px-1.5 py-0.5 shadow-[1px_1px_0px_#1c1b1b]">' + f.status + '</span></td>' +
       '<td class="p-space-sm text-center"><span class="inline-block ' + badgeBg + ' text-on-surface border border-on-surface font-label-caps text-label-caps font-bold px-1.5 py-0.5">' + f.severity + '</span></td>' +
@@ -324,35 +331,86 @@ ${renderFooter()}
   }
 
   function buildDrawerContent(f) {
-    var refMean = f.reference_mean !== null && f.reference_mean !== undefined ? f.reference_mean.toFixed(4) : '—';
-    var curMean = f.current_mean !== null && f.current_mean !== undefined ? f.current_mean.toFixed(4) : '—';
-    var delta   = f.mean_change_percent !== null && f.mean_change_percent !== undefined
-      ? (f.mean_change_percent >= 0 ? '+' : '') + f.mean_change_percent.toFixed(1) + '%'
-      : '—';
-    var ks    = f.ks_statistic !== null && f.ks_statistic !== undefined ? f.ks_statistic.toFixed(4) : 'N/A';
-    var ksPval= f.ks_p_value   !== null && f.ks_p_value   !== undefined ? f.ks_p_value.toFixed(4)   : 'N/A';
-    var wass  = f.wasserstein_distance !== null && f.wasserstein_distance !== undefined ? f.wasserstein_distance.toFixed(4) : 'N/A';
-    var overThreshold = f.psi > psiThreshold;
-    var explanation = '<strong class="font-bold">' + f.name + '</strong> registered PSI of <strong class="font-bold">' + f.psi.toFixed(4) + '</strong> and JS divergence of <strong class="font-bold">' + f.js_divergence.toFixed(4) + '</strong>. ' +
-      (overThreshold
-        ? 'Distribution drift exceeds the configured threshold (' + psiThreshold + '). Downstream models using this feature should be monitored for performance degradation.'
-        : 'Distribution drift is within tolerable production variation boundaries (PSI threshold: ' + psiThreshold + ').');
-    if (f.type === 'numeric') {
-      explanation += ' Reference mean: ' + refMean + ' → Current mean: ' + curMean + ' (' + delta + ').';
-    }
+    var overThreshold = f.status === 'DRIFT';
 
-    return '<div>' +
-      '<span class="font-label-caps text-label-caps text-on-surface-variant uppercase font-bold tracking-wider block mb-space-xs">STATISTICAL COMPARISON MATRIX</span>' +
-      '<div class="grid grid-cols-3 gap-space-xs border-2 border-on-surface bg-surface-container-low p-space-xs">' +
-        _statCell('REF MEAN',   refMean, '') +
-        _statCell('CURR MEAN',  curMean, '') +
-        _statCell('DELTA',      delta,   overThreshold ? 'bg-[#FF5277]' : '') +
-        _statCell('PSI VALUE',  f.psi.toFixed(4), overThreshold ? 'text-[#ba1a1a]' : '', 'LIMIT: ' + psiThreshold) +
-        _statCell('KS STAT',    ks, '',    'P: ' + ksPval) +
-        _statCell('WASSERSTEIN',wass, '',  'L1 DISTANCE') +
+    if (f.type === 'categorical') {
+      var thresholdDesc = 'Categorical JS threshold: ' + catJsThreshold;
+      var explanation = '<strong class="font-bold">' + f.name + '</strong> is a categorical feature with JS divergence of <strong class="font-bold">' + f.js_divergence.toFixed(4) + '</strong>. ' +
+        (overThreshold
+          ? 'Distribution drift exceeds the configured guardrails (' + thresholdDesc + '). Downstream ML systems using this feature should be evaluated for potential performance impact.'
+          : 'Distribution drift is within tolerable production variation boundaries (' + thresholdDesc + ').');
+          
+      var catRows = '';
+      if (f.category_distribution && f.category_distribution.categories) {
+        for (var i = 0; i < f.category_distribution.categories.length; i++) {
+          catRows += '<tr class="border-b border-on-surface/20 hover:bg-black/5">' +
+            '<td class="py-1 px-2 border-r border-on-surface/20">' + f.category_distribution.categories[i] + '</td>' +
+            '<td class="py-1 px-2 border-r border-on-surface/20 text-right">' + f.category_distribution.reference_percentages[i].toFixed(1) + '%</td>' +
+            '<td class="py-1 px-2 text-right">' + f.category_distribution.current_percentages[i].toFixed(1) + '%</td>' +
+            '</tr>';
+        }
+      }
+
+      return '<div>' +
+        '<span class="font-label-caps text-label-caps text-on-surface-variant uppercase font-bold tracking-wider block mb-space-xs">CATEGORICAL METRICS</span>' +
+        '<div class="grid grid-cols-3 gap-space-xs border-2 border-on-surface bg-surface-container-low p-space-xs">' +
+          _statCell('JS DIVERGENCE', f.js_divergence.toFixed(4), overThreshold ? 'text-[#ba1a1a]' : '', 'LIMIT: ' + catJsThreshold) +
+          _statCell('STATUS', f.status, overThreshold ? 'bg-[#FF5277] font-bold text-on-surface' : '') +
+          _statCell('SEVERITY', f.severity, overThreshold ? 'bg-[#FF5277] font-bold text-on-surface' : '') +
+        '</div>' +
       '</div>' +
-    '</div>' +
-    '<div class="border-[2px] border-on-surface p-space-sm bg-surface-container-lowest shadow-[3px_3px_0px_#1c1b1b]">' +
+      '<div class="border-[2px] border-on-surface bg-surface-container-lowest shadow-[3px_3px_0px_#1c1b1b] mt-space-sm mb-space-sm">' +
+        '<div class="bg-surface-container-highest border-b-2 border-on-surface p-space-xs font-label-caps font-bold uppercase text-on-surface">' +
+          'DISTRIBUTION COMPARISON' +
+        '</div>' +
+        '<table class="w-full text-left border-collapse font-code-sm text-code-sm">' +
+          '<thead class="border-b-2 border-on-surface bg-surface-container-low">' +
+            '<tr>' +
+              '<th class="py-1 px-2 border-r-2 border-on-surface">CATEGORY</th>' +
+              '<th class="py-1 px-2 border-r-2 border-on-surface text-right">REFERENCE</th>' +
+              '<th class="py-1 px-2 text-right">CURRENT</th>' +
+            '</tr>' +
+          '</thead>' +
+          '<tbody>' + catRows + '</tbody>' +
+        '</table>' +
+      '</div>' +
+      _renderCommonDrawerBottom(f, explanation);
+    } else {
+      var refMean = f.reference_mean !== null && f.reference_mean !== undefined ? f.reference_mean.toFixed(4) : 'N/A';
+      var curMean = f.current_mean !== null && f.current_mean !== undefined ? f.current_mean.toFixed(4) : 'N/A';
+      var delta   = f.mean_change_percent !== null && f.mean_change_percent !== undefined
+        ? (f.mean_change_percent >= 0 ? '+' : '') + f.mean_change_percent.toFixed(1) + '%'
+        : 'N/A';
+      var ks    = f.ks_statistic !== null && f.ks_statistic !== undefined ? f.ks_statistic.toFixed(4) : 'N/A';
+      var ksPval = f.ks_p_value !== null && f.ks_p_value !== undefined ? (f.ks_p_value < 0.0001 ? '<0.0001' : f.ks_p_value.toFixed(4)) : 'N/A';
+      var wass  = f.wasserstein_distance !== null && f.wasserstein_distance !== undefined ? f.wasserstein_distance.toFixed(4) : 'N/A';
+      
+      var thresholdDesc = 'PSI threshold: ' + psiThreshold;
+      var metricDisplay = 'registered a PSI of <strong class="font-bold">' + f.psi.toFixed(4) + '</strong>';
+
+      var explanation = '<strong class="font-bold">' + f.name + '</strong> ' + metricDisplay + ' and JS divergence of <strong class="font-bold">' + f.js_divergence.toFixed(4) + '</strong>. ' +
+        (overThreshold
+          ? 'Distribution drift exceeds the configured guardrails (' + thresholdDesc + '). Downstream ML systems using this feature should be evaluated for potential performance impact.'
+          : 'Distribution drift is within tolerable production variation boundaries (' + thresholdDesc + ').');
+      explanation += ' Reference mean: ' + refMean + ' → Current mean: ' + curMean + ' (' + delta + ').';
+
+      return '<div>' +
+        '<span class="font-label-caps text-label-caps text-on-surface-variant uppercase font-bold tracking-wider block mb-space-xs">STATISTICAL COMPARISON MATRIX</span>' +
+        '<div class="grid grid-cols-3 gap-space-xs border-2 border-on-surface bg-surface-container-low p-space-xs">' +
+          _statCell('REF MEAN',   refMean, '') +
+          _statCell('CURR MEAN',  curMean, '') +
+          _statCell('DELTA',      delta,   overThreshold ? 'bg-[#FF5277]' : '') +
+          _statCell('PSI VALUE',  f.psi.toFixed(4), overThreshold ? 'text-[#ba1a1a]' : '', 'LIMIT: ' + psiThreshold) +
+          _statCell('KS STAT',    ks, '',    'P: ' + ksPval) +
+          _statCell('WASSERSTEIN',wass, '',  'L1 DISTANCE') +
+        '</div>' +
+      '</div>' +
+      _renderCommonDrawerBottom(f, explanation);
+    }
+  }
+
+  function _renderCommonDrawerBottom(f, explanation) {
+    return '<div class="border-[2px] border-on-surface p-space-sm bg-surface-container-lowest shadow-[3px_3px_0px_#1c1b1b]">' +
       '<div class="flex items-center justify-between border-b-2 border-on-surface pb-1 mb-space-sm">' +
         '<span class="font-label-caps text-label-caps font-bold uppercase text-on-surface">POPULATION DISTRIBUTION DENSITY</span>' +
         '<div class="flex items-center gap-space-sm font-label-caps text-label-caps">' +
@@ -389,12 +447,22 @@ ${renderFooter()}
 
   function renderChart(f) {
     var canvas = document.getElementById('dist-chart');
-    if (!canvas || !f.distribution || !f.distribution.bin_labels || !f.distribution.bin_labels.length) return;
+    if (!canvas) return;
+    
+    var labels, refPct, curPct;
+    if (f.type === 'numeric' && f.distribution && f.distribution.bin_labels) {
+      labels = f.distribution.bin_labels;
+      refPct = f.distribution.reference_percents;
+      curPct = f.distribution.current_percents;
+    } else if (f.type === 'categorical' && f.category_distribution && f.category_distribution.categories) {
+      labels = f.category_distribution.categories;
+      refPct = f.category_distribution.reference_percentages;
+      curPct = f.category_distribution.current_percentages;
+    } else {
+      return;
+    }
 
     var ctx = canvas.getContext('2d');
-    var labels = f.distribution.bin_labels;
-    var refPct  = f.distribution.reference_percents;
-    var curPct  = f.distribution.current_percents;
     var W = canvas.offsetWidth || 400;
     var H = 160;
     canvas.width  = W;
@@ -500,12 +568,18 @@ ${renderFooter()}
 // ---- Helper rendering functions (server-side template helpers) ----
 
 function _renderFeatureRow(f, idx, threshold) {
+  const primaryMetric = f.type === 'numeric' ? f.psi : f.js_divergence;
   const psiColor = f.status === 'DRIFT' ? 'text-[#ba1a1a]' : (f.status === 'WARNING' ? 'text-[#b58b00]' : 'text-on-surface');
   const statusBg = f.status === 'DRIFT' ? (f.severity === 'CRITICAL' ? 'bg-[#FF5277]' : 'bg-[#FFE600]') : 'bg-[#00D26A]';
   const badgeBg  = _severityBgClass(f.severity);
   const rowBg    = f.status === 'DRIFT' ? 'bg-primary-container/10' : 'bg-surface-container-lowest';
   const borderL  = f.status === 'DRIFT' ? 'border-l-[6px] border-l-[#FF5277]' : '';
-  const ksPval   = f.ks_p_value !== null && f.ks_p_value !== undefined ? f.ks_p_value.toFixed(3) : 'N/A';
+  
+  let ksPval = 'N/A';
+  if (f.type === 'numeric' && f.ks_p_value !== null && f.ks_p_value !== undefined) {
+    ksPval = f.ks_p_value < 0.0001 ? '<0.0001' : f.ks_p_value.toFixed(4);
+  }
+  
   const selected = idx === 0 ? 'outline outline-2 outline-secondary' : '';
 
   return `
@@ -514,7 +588,7 @@ function _renderFeatureRow(f, idx, threshold) {
       ${f.name}${f.status === 'DRIFT' ? '<span class="material-symbols-outlined text-[14px] text-[#FF5277] align-middle ml-1">arrow_forward</span>' : ''}
     </td>
     <td class="p-space-sm border-r-2 border-on-surface uppercase">${f.type}</td>
-    <td class="p-space-sm border-r-2 border-on-surface text-right font-bold ${psiColor}">${f.psi.toFixed(3)}</td>
+    <td class="p-space-sm border-r-2 border-on-surface text-right font-bold ${psiColor}">${(f.type === 'numeric' ? 'PSI ' : 'JS ') + primaryMetric.toFixed(3)}</td>
     <td class="p-space-sm border-r-2 border-on-surface text-right">${ksPval}</td>
     <td class="p-space-sm border-r-2 border-on-surface text-center">
       <span class="inline-block ${statusBg} text-on-surface border border-on-surface font-label-caps text-label-caps font-bold px-1.5 py-0.5 shadow-[1px_1px_0px_#1c1b1b]">${f.status}</span>
@@ -526,50 +600,116 @@ function _renderFeatureRow(f, idx, threshold) {
 }
 
 function _renderDrawerContent(f, threshold) {
-  const refMean = f.reference_mean !== null && f.reference_mean !== undefined ? f.reference_mean.toFixed(4) : '—';
-  const curMean = f.current_mean   !== null && f.current_mean   !== undefined ? f.current_mean.toFixed(4)   : '—';
-  const delta   = f.mean_change_percent !== null && f.mean_change_percent !== undefined
-    ? (f.mean_change_percent >= 0 ? '+' : '') + f.mean_change_percent.toFixed(1) + '%'
-    : '—';
-  const ks      = f.ks_statistic !== null && f.ks_statistic !== undefined ? f.ks_statistic.toFixed(4) : 'N/A';
-  const ksPval  = f.ks_p_value   !== null && f.ks_p_value   !== undefined ? f.ks_p_value.toFixed(4)   : 'N/A';
-  const wass    = f.wasserstein_distance !== null && f.wasserstein_distance !== undefined ? f.wasserstein_distance.toFixed(4) : 'N/A';
-  const over    = f.psi > threshold;
+  const over = f.status === 'DRIFT';
 
-  return `
-  <div>
-    <span class="font-label-caps text-label-caps text-on-surface-variant uppercase font-bold tracking-wider block mb-space-xs">STATISTICAL COMPARISON MATRIX</span>
-    <div class="grid grid-cols-3 gap-space-xs border-2 border-on-surface bg-surface-container-low p-space-xs">
-      <div class="border border-on-surface bg-surface-container-lowest p-space-xs flex flex-col">
-        <span class="font-label-caps text-label-caps text-on-surface-variant uppercase">REF MEAN</span>
-        <span class="font-code-lg text-code-lg font-bold text-on-surface">${refMean}</span>
-      </div>
-      <div class="border border-on-surface bg-surface-container-lowest p-space-xs flex flex-col">
-        <span class="font-label-caps text-label-caps text-on-surface-variant uppercase">CURR MEAN</span>
-        <span class="font-code-lg text-code-lg font-bold text-on-surface">${curMean}</span>
-      </div>
-      <div class="border border-on-surface ${over ? 'bg-[#FF5277]' : 'bg-surface-container-lowest'} p-space-xs flex flex-col">
-        <span class="font-label-caps text-label-caps text-on-surface uppercase font-bold">DELTA</span>
-        <span class="font-code-lg text-code-lg font-bold text-on-surface">${delta}</span>
-      </div>
-      <div class="border border-on-surface bg-surface-container-lowest p-space-xs flex flex-col">
-        <span class="font-label-caps text-label-caps text-on-surface-variant uppercase">PSI VALUE</span>
-        <span class="font-code-lg text-code-lg font-bold ${over ? 'text-[#ba1a1a]' : 'text-on-surface'}">${f.psi.toFixed(4)}</span>
-        <span class="font-code-sm text-[9px] text-on-surface-variant">LIMIT: ${threshold}</span>
-      </div>
-      <div class="border border-on-surface bg-surface-container-lowest p-space-xs flex flex-col">
-        <span class="font-label-caps text-label-caps text-on-surface-variant uppercase">KS STAT</span>
-        <span class="font-code-lg text-code-lg font-bold text-on-surface">${ks}</span>
-        <span class="font-code-sm text-[9px] text-on-surface-variant">P: ${ksPval}</span>
-      </div>
-      <div class="border border-on-surface bg-surface-container-lowest p-space-xs flex flex-col">
-        <span class="font-label-caps text-label-caps text-on-surface-variant uppercase">WASSERSTEIN</span>
-        <span class="font-code-lg text-code-lg font-bold text-on-surface">${wass}</span>
-        <span class="font-code-sm text-[9px] text-on-surface-variant">L1 DISTANCE</span>
+  if (f.type === 'categorical') {
+    let catRows = '';
+    if (f.category_distribution && f.category_distribution.categories) {
+      for (let i = 0; i < f.category_distribution.categories.length; i++) {
+        catRows += `
+          <tr class="border-b border-on-surface/20 hover:bg-black/5">
+            <td class="py-1 px-2 border-r border-on-surface/20">${f.category_distribution.categories[i]}</td>
+            <td class="py-1 px-2 border-r border-on-surface/20 text-right">${f.category_distribution.reference_percentages[i].toFixed(1)}%</td>
+            <td class="py-1 px-2 text-right">${f.category_distribution.current_percentages[i].toFixed(1)}%</td>
+          </tr>`;
+      }
+    }
+
+    return `
+    <div>
+      <span class="font-label-caps text-label-caps text-on-surface-variant uppercase font-bold tracking-wider block mb-space-xs">CATEGORICAL METRICS</span>
+      <div class="grid grid-cols-3 gap-space-xs border-2 border-on-surface bg-surface-container-low p-space-xs">
+        <div class="border border-on-surface bg-surface-container-lowest p-space-xs flex flex-col">
+          <span class="font-label-caps text-label-caps text-on-surface-variant uppercase">JS DIVERGENCE</span>
+          <span class="font-code-lg text-code-lg font-bold ${over ? 'text-[#ba1a1a]' : 'text-on-surface'}">${f.js_divergence.toFixed(4)}</span>
+          <span class="font-code-sm text-[9px] text-on-surface-variant">CATEGORICAL DRIFT</span>
+        </div>
+        <div class="border border-on-surface ${over ? 'bg-[#FF5277]' : 'bg-surface-container-lowest'} p-space-xs flex flex-col">
+          <span class="font-label-caps text-label-caps text-on-surface uppercase font-bold">STATUS</span>
+          <span class="font-code-lg text-code-lg font-bold text-on-surface">${f.status}</span>
+        </div>
+        <div class="border border-on-surface ${over ? 'bg-[#FF5277]' : 'bg-surface-container-lowest'} p-space-xs flex flex-col">
+          <span class="font-label-caps text-label-caps text-on-surface uppercase font-bold">SEVERITY</span>
+          <span class="font-code-lg text-code-lg font-bold text-on-surface">${f.severity}</span>
+        </div>
       </div>
     </div>
-  </div>
+    
+    <div class="border-[2px] border-on-surface bg-surface-container-lowest shadow-[3px_3px_0px_#1c1b1b] mt-space-sm mb-space-sm">
+      <div class="bg-surface-container-highest border-b-2 border-on-surface p-space-xs font-label-caps font-bold uppercase text-on-surface">
+        DISTRIBUTION COMPARISON
+      </div>
+      <table class="w-full text-left border-collapse font-code-sm text-code-sm">
+        <thead class="border-b-2 border-on-surface bg-surface-container-low">
+          <tr>
+            <th class="py-1 px-2 border-r-2 border-on-surface">CATEGORY</th>
+            <th class="py-1 px-2 border-r-2 border-on-surface text-right">REFERENCE</th>
+            <th class="py-1 px-2 text-right">CURRENT</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${catRows}
+        </tbody>
+      </table>
+    </div>
+    ` + _renderCommonDrawerBottomTpl(f, threshold, over, '');
+  } else {
+    const refMean = f.reference_mean !== null && f.reference_mean !== undefined ? f.reference_mean.toFixed(4) : 'N/A';
+    const curMean = f.current_mean   !== null && f.current_mean   !== undefined ? f.current_mean.toFixed(4)   : 'N/A';
+    const delta   = f.mean_change_percent !== null && f.mean_change_percent !== undefined
+      ? (f.mean_change_percent >= 0 ? '+' : '') + f.mean_change_percent.toFixed(1) + '%'
+      : 'N/A';
+    const ks      = f.ks_statistic !== null && f.ks_statistic !== undefined ? f.ks_statistic.toFixed(4) : 'N/A';
+    
+    let ksPval = 'N/A';
+    if (f.type === 'numeric' && f.ks_p_value !== null && f.ks_p_value !== undefined) {
+      ksPval = f.ks_p_value < 0.0001 ? '<0.0001' : f.ks_p_value.toFixed(4);
+    }
+    
+    const wass    = f.wasserstein_distance !== null && f.wasserstein_distance !== undefined ? f.wasserstein_distance.toFixed(4) : 'N/A';
+    
+    const metricDisplay = `registered a PSI of <strong class="font-bold ${over ? 'text-[#BA1A1A]' : ''}">${f.psi.toFixed(4)}</strong>`;
+    const meanDisplay = ` Reference mean: ${refMean} → Current mean: ${curMean} (${delta}).`;
 
+    return `
+    <div>
+      <span class="font-label-caps text-label-caps text-on-surface-variant uppercase font-bold tracking-wider block mb-space-xs">STATISTICAL COMPARISON MATRIX</span>
+      <div class="grid grid-cols-3 gap-space-xs border-2 border-on-surface bg-surface-container-low p-space-xs">
+        <div class="border border-on-surface bg-surface-container-lowest p-space-xs flex flex-col">
+          <span class="font-label-caps text-label-caps text-on-surface-variant uppercase">REF MEAN</span>
+          <span class="font-code-lg text-code-lg font-bold text-on-surface">${refMean}</span>
+        </div>
+        <div class="border border-on-surface bg-surface-container-lowest p-space-xs flex flex-col">
+          <span class="font-label-caps text-label-caps text-on-surface-variant uppercase">CURR MEAN</span>
+          <span class="font-code-lg text-code-lg font-bold text-on-surface">${curMean}</span>
+        </div>
+        <div class="border border-on-surface ${over ? 'bg-[#FF5277]' : 'bg-surface-container-lowest'} p-space-xs flex flex-col">
+          <span class="font-label-caps text-label-caps text-on-surface uppercase font-bold">DELTA</span>
+          <span class="font-code-lg text-code-lg font-bold text-on-surface">${delta}</span>
+        </div>
+        <div class="border border-on-surface bg-surface-container-lowest p-space-xs flex flex-col">
+          <span class="font-label-caps text-label-caps text-on-surface-variant uppercase">PSI VALUE</span>
+          <span class="font-code-lg text-code-lg font-bold ${over ? 'text-[#ba1a1a]' : 'text-on-surface'}">${f.psi.toFixed(4)}</span>
+          <span class="font-code-sm text-[9px] text-on-surface-variant">LIMIT: ${threshold}</span>
+        </div>
+        <div class="border border-on-surface bg-surface-container-lowest p-space-xs flex flex-col">
+          <span class="font-label-caps text-label-caps text-on-surface-variant uppercase">KS STAT</span>
+          <span class="font-code-lg text-code-lg font-bold text-on-surface">${ks}</span>
+          <span class="font-code-sm text-[9px] text-on-surface-variant">P: ${ksPval}</span>
+        </div>
+        <div class="border border-on-surface bg-surface-container-lowest p-space-xs flex flex-col">
+          <span class="font-label-caps text-label-caps text-on-surface-variant uppercase">WASSERSTEIN</span>
+          <span class="font-code-lg text-code-lg font-bold text-on-surface">${wass}</span>
+          <span class="font-code-sm text-[9px] text-on-surface-variant">L1 DISTANCE</span>
+        </div>
+      </div>
+    </div>
+    ` + _renderCommonDrawerBottomTpl(f, threshold, over, meanDisplay);
+  }
+}
+
+function _renderCommonDrawerBottomTpl(f, threshold, over, meanDisplay) {
+  return `
   <div class="border-[2px] border-on-surface p-space-sm bg-surface-container-lowest shadow-[3px_3px_0px_#1c1b1b]">
     <div class="flex items-center justify-between border-b-2 border-on-surface pb-1 mb-space-sm">
       <span class="font-label-caps text-label-caps font-bold uppercase text-on-surface">POPULATION DISTRIBUTION DENSITY</span>
@@ -587,13 +727,13 @@ function _renderDrawerContent(f, threshold) {
       EXPLANATION &amp; RECOMMENDATION
     </div>
     <p class="font-body-md text-body-md text-on-surface m-0 leading-relaxed">
-      <strong class="font-bold">${f.name}</strong> registered a PSI of <strong class="font-bold ${over ? 'text-[#BA1A1A]' : ''}">${f.psi.toFixed(4)}</strong>
+      <strong class="font-bold">${f.name}</strong> ${f.type === 'numeric' ? `registered a PSI of <strong class="font-bold ${over ? 'text-[#BA1A1A]' : ''}">${f.psi.toFixed(4)}</strong>` : `is a categorical feature with`}
       and JS divergence of <strong class="font-bold">${f.js_divergence.toFixed(4)}</strong>.
       ${over
-        ? `Distribution drift exceeds the configured threshold (${threshold}). Downstream models using this feature should be monitored for performance degradation.`
-        : `Distribution drift is within tolerable variation boundaries (PSI threshold: ${threshold}).`
+        ? `Distribution drift exceeds the configured guardrails. Downstream ML systems using this feature should be evaluated for potential performance impact.`
+        : `Distribution drift is within tolerable variation boundaries.`
       }
-      ${f.type === 'numeric' ? ` Reference mean: ${refMean} → Current mean: ${curMean} (${delta}).` : ''}
+      ${meanDisplay}
     </p>
   </div>
 

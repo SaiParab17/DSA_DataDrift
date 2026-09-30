@@ -206,8 +206,8 @@ class TestDriftEngineNumeric:
         cur = _make_cur_drift_df()
         engine = DriftEngine(psi_threshold=0.25)
         result = engine.analyze(ref, cur)
-        psis = [f.psi for f in result.features]
-        assert psis == sorted(psis, reverse=True)
+        metrics = [f.psi if f.psi is not None else f.js_divergence for f in result.features]
+        assert metrics == sorted(metrics, reverse=True)
 
     def test_missing_values_handled(self):
         ref = _make_ref_df().copy()
@@ -239,7 +239,7 @@ class TestDriftEngineCategorical:
         result = engine.analyze(ref, cur)
         dept_feat = next(f for f in result.features if f.name == "dept")
         assert dept_feat.type == "categorical"
-        assert dept_feat.psi < 0.25
+        assert dept_feat.js_divergence < 0.1
 
     def test_shifted_categorical_detected(self):
         ref = _make_ref_df()
@@ -248,7 +248,7 @@ class TestDriftEngineCategorical:
         result = engine.analyze(ref, cur)
         dept_feat = next(f for f in result.features if f.name == "dept")
         assert dept_feat.type == "categorical"
-        assert dept_feat.psi > 0.1   # should at least show notable drift
+        assert dept_feat.js_divergence > 0.05   # should at least show notable drift
 
     def test_new_category_handled(self):
         ref = pd.DataFrame({"cat": ["a", "b", "a", "b"] * 25})
@@ -256,7 +256,7 @@ class TestDriftEngineCategorical:
         engine = DriftEngine(psi_threshold=0.25)
         result = engine.analyze(ref, cur)
         cat_feat = next(f for f in result.features if f.name == "cat")
-        assert math.isfinite(cat_feat.psi)
+        assert math.isfinite(cat_feat.js_divergence)
         assert math.isfinite(cat_feat.js_divergence)
 
     def test_missing_category_handled(self):
@@ -265,7 +265,7 @@ class TestDriftEngineCategorical:
         engine = DriftEngine(psi_threshold=0.25)
         result = engine.analyze(ref, cur)
         cat_feat = next(f for f in result.features if f.name == "cat")
-        assert math.isfinite(cat_feat.psi)
+        assert math.isfinite(cat_feat.js_divergence)
 
 
 class TestDriftEngineResponse:

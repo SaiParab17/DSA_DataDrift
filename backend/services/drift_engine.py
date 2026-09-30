@@ -22,6 +22,7 @@ from models.drift_models import (
     DriftAnalysisResponse,
     FeatureResult,
     DistributionData,
+    CategoryDistribution,
     SchemaInfo,
 )
 from utils.statistics import (
@@ -31,6 +32,7 @@ from utils.statistics import (
     categorical_proportions,
     js_divergence,
     classify_psi_severity,
+    classify_js_severity,
 )
 
 logger = logging.getLogger(__name__)
@@ -53,10 +55,13 @@ class DriftEngine:
                                 ref_name="ref.csv", cur_name="cur.csv")
     """
 
-    def __init__(self, psi_threshold: float = 0.25) -> None:
+    def __init__(self, psi_threshold: float = 0.25, js_threshold: float = 0.1) -> None:
         if psi_threshold <= 0:
             raise ValueError("psi_threshold must be positive.")
+        if js_threshold <= 0:
+            raise ValueError("js_threshold must be positive.")
         self.psi_threshold = psi_threshold
+        self.js_threshold = js_threshold
 
     # ------------------------------------------------------------------
     # Public API
@@ -82,11 +87,14 @@ class DriftEngine:
             except Exception as exc:  # pragma: no cover — defensive
                 logger.warning("Skipping column '%s': %s", col, exc)
 
-        # Sort descending by PSI
-        feature_results.sort(key=lambda f: f.psi, reverse=True)
+        # Sort descending by primary metric (PSI for numeric, JSD for categorical)
+        feature_results.sort(key=lambda f: f.psi if f.psi is not None else f.js_divergence, reverse=True)
 
         drifted = [f for f in feature_results if f.status == "DRIFT"]
-        max_psi = max((f.psi for f in feature_results), default=0.0)
+        
+        # max_psi only considers numerical features
+        numeric_psis = [f.psi for f in feature_results if f.type == "numeric" and f.psi is not None]
+        max_psi = max(numeric_psis) if numeric_psis else None
         overall_status = (
             "DRIFT_DETECTED" if drifted else "NO_SIGNIFICANT_DRIFT"
         )
@@ -101,8 +109,9 @@ class DriftEngine:
             current_rows=len(current_df),
             features_analyzed=len(feature_results),
             features_drifted=len(drifted),
-            max_psi=round(max_psi, 6),
+            max_psi=max_psi if max_psi is None else round(max_psi, 6),
             psi_threshold=self.psi_threshold,
+            categorical_js_threshold=self.js_threshold,
             overall_status=overall_status,
             elapsed_ms=round(elapsed_ms, 2),
             schema=schema,
@@ -302,19 +311,25 @@ class DriftEngine:
         ref_prop = categorical_proportions(ref_vals, categories)
         cur_prop = categorical_proportions(cur_vals, categories)
 
-        psi = calculate_psi_from_proportions(ref_prop, cur_prop)
+        psi = None  # Categorical uses JS divergence instead
         jsd = js_divergence(ref_prop, cur_prop)
 
-        status, severity = classify_psi_severity(psi, self.psi_threshold)
+        status, severity = classify_js_severity(jsd, self.js_threshold)
 
-        distribution = self._build_categorical_distribution(
-            ref_vals, cur_vals, categories,
+        cat_dist = self._build_categorical_distribution(
+            ref_counts=ref_prop, # We can just pass the counts... wait, _build_categorical_distribution does its own counts. Let's fix that below.
+            ref_vals=ref_vals,
+            cur_vals=cur_vals,
+            categories=categories,
         )
 
         return FeatureResult(
             name=name,
             type="categorical",
-            psi=round(psi, 6),
+            psi=None,
+            ks_statistic=None,
+            ks_p_value=None,
+            wasserstein_distance=None,
             js_divergence=round(jsd, 6),
             reference_missing_count=ref_missing,
             reference_missing_percent=round(ref_miss_pct, 4),
@@ -322,31 +337,29 @@ class DriftEngine:
             current_missing_percent=round(cur_miss_pct, 4),
             status=status,
             severity=severity,
-            distribution=distribution,
+            category_distribution=cat_dist,
         )
 
     def _build_categorical_distribution(
         self,
+        ref_counts,
         ref_vals: np.ndarray,
         cur_vals: np.ndarray,
         categories: list[str],
-    ) -> DistributionData:
+    ) -> CategoryDistribution:
         n_ref = max(len(ref_vals), 1)
         n_cur = max(len(cur_vals), 1)
 
         ref_counts_dict = pd.Series(ref_vals).value_counts()
         cur_counts_dict = pd.Series(cur_vals).value_counts()
 
-        ref_counts = [int(ref_counts_dict.get(c, 0)) for c in categories]
-        cur_counts = [int(cur_counts_dict.get(c, 0)) for c in categories]
+        ref_counts_list = [int(ref_counts_dict.get(c, 0)) for c in categories]
+        cur_counts_list = [int(cur_counts_dict.get(c, 0)) for c in categories]
 
-        return DistributionData(
-            bins=[float(i) for i in range(len(categories) + 1)],
-            bin_labels=list(categories),
-            reference_counts=ref_counts,
-            current_counts=cur_counts,
-            reference_percents=[round(c / n_ref * 100, 2) for c in ref_counts],
-            current_percents=[round(c / n_cur * 100, 2) for c in cur_counts],
+        return CategoryDistribution(
+            categories=list(categories),
+            reference_percentages=[round(c / n_ref * 100, 2) for c in ref_counts_list],
+            current_percentages=[round(c / n_cur * 100, 2) for c in cur_counts_list],
         )
 
     # ------------------------------------------------------------------
@@ -373,20 +386,37 @@ class DriftEngine:
         cur_miss_pct: float,
     ) -> FeatureResult:
         """Return a NOT_APPLICABLE result for constant/degenerate columns."""
-        return FeatureResult(
-            name=name,
-            type=col_type,
-            psi=0.0,
-            js_divergence=0.0,
-            reference_missing_count=ref_missing,
-            reference_missing_percent=round(ref_miss_pct, 4),
-            current_missing_count=cur_missing,
-            current_missing_percent=round(cur_miss_pct, 4),
-            status="STABLE",
-            severity="NEGLIGIBLE",
-            distribution=DistributionData(
-                bins=[], bin_labels=[],
-                reference_counts=[], current_counts=[],
-                reference_percents=[], current_percents=[],
-            ),
-        )
+        if col_type == "numeric":
+            return FeatureResult(
+                name=name,
+                type=col_type,
+                psi=0.0,
+                js_divergence=0.0,
+                reference_missing_count=ref_missing,
+                reference_missing_percent=round(ref_miss_pct, 4),
+                current_missing_count=cur_missing,
+                current_missing_percent=round(cur_miss_pct, 4),
+                status="STABLE",
+                severity="NEGLIGIBLE",
+                distribution=DistributionData(
+                    bins=[], bin_labels=[],
+                    reference_counts=[], current_counts=[],
+                    reference_percents=[], current_percents=[],
+                ),
+            )
+        else:
+            return FeatureResult(
+                name=name,
+                type=col_type,
+                psi=None,
+                js_divergence=0.0,
+                reference_missing_count=ref_missing,
+                reference_missing_percent=round(ref_miss_pct, 4),
+                current_missing_count=cur_missing,
+                current_missing_percent=round(cur_miss_pct, 4),
+                status="STABLE",
+                severity="NEGLIGIBLE",
+                category_distribution=CategoryDistribution(
+                    categories=[], reference_percentages=[], current_percentages=[]
+                ),
+            )

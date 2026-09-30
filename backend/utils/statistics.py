@@ -153,3 +153,18 @@ def classify_psi_severity(psi: float, threshold: float) -> tuple[str, str]:
     if psi < threshold * 1.5:
         return "DRIFT", "HIGH"
     return "DRIFT", "CRITICAL"
+
+
+def classify_js_severity(jsd: float, threshold: float) -> tuple[str, str]:
+    """
+    Map a JS divergence value to a (status, severity) tuple.
+    """
+    if jsd < 0.05:
+        return "STABLE", "NEGLIGIBLE"
+    if jsd < threshold:
+        if jsd < 0.075:
+            return "WARNING", "LOW"
+        return "WARNING", "MODERATE"
+    if jsd < threshold * 1.5:
+        return "DRIFT", "HIGH"
+    return "DRIFT", "CRITICAL"

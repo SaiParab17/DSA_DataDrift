@@ -104,8 +104,8 @@ ${renderNav('dashboard')}
       <div class="bg-[#FFE5EC] border-[3px] border-on-surface p-5 shadow-[4px_4px_0px_#111111] flex flex-col justify-between">
         <div class="font-mono text-xs font-bold uppercase tracking-wider text-on-surface pb-3 border-b-2 border-on-surface">MAX PSI</div>
         <div class="my-4">
-          <div class="font-mono text-5xl font-black text-brand-coral leading-none">${result.max_psi.toFixed(3)}</div>
-          <div class="font-mono text-xs font-bold text-on-surface/80 mt-2 truncate">${firstFeature ? firstFeature.name : '—'}</div>
+          <div class="font-mono text-5xl font-black text-brand-coral leading-none">${result.max_psi !== null ? result.max_psi.toFixed(3) : 'N/A'}</div>
+          <div class="font-mono text-xs font-bold text-on-surface/80 mt-2 truncate">${result.max_psi !== null && firstFeature ? firstFeature.name : 'No numeric features'}</div>
         </div>
       </div>
       <!-- PSI Threshold -->
@@ -162,6 +162,7 @@ ${renderNav('dashboard')}
 }
 
 function _renderDashboardRow(f) {
+  const primaryMetric = f.type === 'numeric' ? f.psi : f.js_divergence;
   let rowBg = 'bg-surface-card hover:bg-black/5';
   let psiColor = 'text-on-surface';
   let statusBadge = '';
@@ -189,7 +190,7 @@ function _renderDashboardRow(f) {
   return `
     <tr class="${rowBg} transition-colors">
       <td class="py-3.5 px-5 border-r-[2.5px] border-on-surface font-bold text-on-surface">${f.name}</td>
-      <td class="py-3.5 px-5 border-r-[2.5px] border-on-surface font-black text-right ${psiColor} text-base">${f.psi.toFixed(3)}</td>
+      <td class="py-3.5 px-5 border-r-[2.5px] border-on-surface font-black text-right ${psiColor} text-base">${(f.type === 'numeric' ? 'PSI ' : 'JS ') + primaryMetric.toFixed(3)}</td>
       <td class="py-3.5 px-5 border-r-[2.5px] border-on-surface">${statusBadge}</td>
       <td class="py-3.5 px-5">${severityBadge}</td>
     </tr>`;

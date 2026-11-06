@@ -226,6 +226,38 @@ ${renderNav('analyze')}
         </div>
       </section>
 
+      <!-- Optional ML Model Impact Section -->
+      <section class="bg-[#FFFDF8] border-[3.5px] border-on-surface p-space-md md:p-space-lg shadow-[6px_6px_0px_#1c1b1b]">
+        <div class="border-b-[2.5px] border-on-surface pb-space-sm mb-space-md flex flex-wrap items-center justify-between gap-space-xs">
+          <div class="flex items-center gap-space-xs">
+            <span class="material-symbols-outlined text-[20px] text-on-surface">model_training</span>
+            <h3 class="font-headline-sm text-headline-sm uppercase text-on-surface font-bold">OPTIONAL — ML MODEL IMPACT</h3>
+          </div>
+          <span class="font-label-caps text-label-caps bg-secondary-container text-on-secondary border border-on-surface px-2 py-0.5 uppercase font-bold">LOGISTIC_REGRESSION_EVAL</span>
+        </div>
+        <div class="flex flex-col gap-space-md">
+          <label class="flex items-center gap-space-sm cursor-pointer select-none">
+            <input type="checkbox" id="enable-model-impact-cb" class="w-5 h-5 accent-on-surface border-2 border-on-surface cursor-pointer" />
+            <span class="font-headline-sm text-headline-sm uppercase text-on-surface font-bold">Evaluate model performance</span>
+          </label>
+          <p class="font-body-md text-body-md text-on-surface-variant max-w-3xl">
+            Trains a baseline Logistic Regression model on the reference training subset (80/20 holdout) and evaluates whether predictive performance degrades on the current labelled dataset.
+          </p>
+          <div id="model-impact-config" class="hidden flex flex-col sm:flex-row items-start sm:items-center gap-space-md pt-space-xs border-t-2 border-dashed border-on-surface/30">
+            <div class="flex flex-col gap-1 w-full sm:w-auto">
+              <label class="font-label-caps text-label-caps uppercase font-bold text-on-surface" for="target-column-select">Target column:</label>
+              <select id="target-column-select" class="bg-surface-container-lowest border-[2.5px] border-on-surface font-code-sm text-code-sm font-bold text-on-surface py-2 px-3 shadow-[2px_2px_0px_#1c1b1b] min-w-[260px] focus:outline-none focus:bg-primary-fixed">
+                <option value="">[ Select a target ]</option>
+              </select>
+            </div>
+            <div class="font-code-sm text-code-sm text-on-surface-variant flex items-center gap-1 self-end sm:self-center pt-1">
+              <span class="material-symbols-outlined text-[16px]">info</span>
+              <span id="target-col-hint">Select reference &amp; current CSVs to populate columns</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
       <!-- CTA: Analyze Button -->
       <section class="flex flex-col items-center justify-center gap-space-sm py-space-sm">
         <button
@@ -369,21 +401,89 @@ ${renderFooter()}
     }
   }
 
+  // ---- Target column detection ----
+  async function getCsvColumns(file) {
+    if (!file) return [];
+    return new Promise(resolve => {
+      const reader = new FileReader();
+      const slice = file.slice(0, 8192);
+      reader.onload = e => {
+        const text = e.target?.result || '';
+        const firstLine = (text.split('\\n')[0] || '').replace('\\r', '').trim();
+        const cols = firstLine.split(',').map(c => c.trim().replace(/^["']|["']$/g, '')).filter(Boolean);
+        resolve(cols);
+      };
+      reader.onerror = () => resolve([]);
+      reader.readAsText(slice);
+    });
+  }
+
+  async function updateTargetColumnOptions() {
+    const select = document.getElementById('target-column-select');
+    const hint = document.getElementById('target-col-hint');
+    if (!select) return;
+
+    if (!refFile || !curFile) {
+      select.innerHTML = '<option value="">[ Select a target ]</option>';
+      if (hint) hint.textContent = 'Upload reference & current CSVs to populate columns';
+      return;
+    }
+
+    const [refCols, curCols] = await Promise.all([getCsvColumns(refFile), getCsvColumns(curFile)]);
+    const curSet = new Set(curCols);
+    const common = refCols.filter(c => curSet.has(c));
+
+    // Filter out obvious identifier names to assist the user
+    const idNames = new Set(['id', 'customer_id', 'customerid', 'user_id', 'entity_id', 'transaction_id']);
+    const nonIdCols = common.filter(c => !idNames.has(c.toLowerCase()) && !c.toLowerCase().endsWith('_id'));
+
+    select.innerHTML = '<option value="">[ Select a target ]</option>';
+    nonIdCols.forEach(col => {
+      const opt = document.createElement('option');
+      opt.value = col;
+      opt.textContent = col;
+      select.appendChild(opt);
+    });
+
+    if (hint) {
+      hint.textContent = nonIdCols.length + ' compatible candidate target(s) detected';
+    }
+
+    if (window.__dwState?.targetColumn && nonIdCols.includes(window.__dwState.targetColumn)) {
+      select.value = window.__dwState.targetColumn;
+    }
+  }
+
+  const modelImpactCb = document.getElementById('enable-model-impact-cb');
+  const modelImpactConfig = document.getElementById('model-impact-config');
+  modelImpactCb?.addEventListener('change', () => {
+    if (modelImpactCb.checked) {
+      modelImpactConfig?.classList.remove('hidden');
+      updateTargetColumnOptions();
+    } else {
+      modelImpactConfig?.classList.add('hidden');
+    }
+  });
+
   // ---- File input handlers ----
   ['ref', 'cur'].forEach(prefix => {
     const input = document.getElementById(prefix + '-file-input');
     if (!input) return;
-    input.addEventListener('change', e => {
+    input.addEventListener('change', async e => {
       const file = e.target.files?.[0] || null;
       if (prefix === 'ref') refFile = file;
       else curFile = file;
       updateFileUI(prefix, file);
+      if (modelImpactCb?.checked) {
+        await updateTargetColumnOptions();
+      }
     });
     document.getElementById(prefix + '-remove-btn')?.addEventListener('click', () => {
       input.value = '';
       if (prefix === 'ref') refFile = null;
       else curFile = null;
       updateFileUI(prefix, null);
+      updateTargetColumnOptions();
     });
   });
 
@@ -395,6 +495,11 @@ ${renderFooter()}
   if (window.__dwState?.currentFile) {
     curFile = window.__dwState.currentFile;
     updateFileUI('cur', curFile);
+  }
+  if (window.__dwState?.runModelImpact && modelImpactCb) {
+    modelImpactCb.checked = true;
+    modelImpactConfig?.classList.remove('hidden');
+    updateTargetColumnOptions();
   }
 
   // ---- Error banner ----
@@ -441,17 +546,32 @@ ${renderFooter()}
       return;
     }
 
+    const runModelImpact = Boolean(document.getElementById('enable-model-impact-cb')?.checked);
+    const targetSelect = document.getElementById('target-column-select');
+    const targetColumn = runModelImpact ? targetSelect?.value?.trim() || null : null;
+
+    if (runModelImpact && !targetColumn) {
+      showError('Please select a target column for ML Model Impact Analysis, or uncheck "Evaluate model performance".');
+      return;
+    }
+
     setLoading(true);
     try {
       // Dynamic import so the API module is loaded lazily
       const { analyzeDrift } = await import('/src/api/client.js');
       const { persistResult, default: store } = await import('/src/state/store.js');
       const t0 = performance.now();
-      const result = await analyzeDrift(refFile, curFile, threshold);
+      const result = await analyzeDrift(refFile, curFile, threshold, runModelImpact, targetColumn);
       const elapsed = performance.now() - t0;
       persistResult(result);
       // Store files on the window so they survive navigation for re-analysis
-      window.__dwState = { referenceFile: refFile, currentFile: curFile, psiThreshold: threshold };
+      window.__dwState = {
+        referenceFile: refFile,
+        currentFile: curFile,
+        psiThreshold: threshold,
+        runModelImpact,
+        targetColumn,
+      };
       window.location.hash = '#/results';
     } catch (err) {
       setLoading(false);

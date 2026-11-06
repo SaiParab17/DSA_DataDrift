@@ -1,6 +1,17 @@
 import { renderNav, renderFooter } from '../components/nav.js';
 import state from '../state/store.js';
 
+function _formatBytes(bytes) {
+  if (!bytes || bytes <= 0) return '0 B';
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+  return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
+}
+
+function _fmt(val, digits = 4) {
+  return (val !== null && val !== undefined) ? Number(val).toFixed(digits) : 'N/A';
+}
+
 export function renderResults() {
   const result = state.latestResult;
 
@@ -106,6 +117,7 @@ ${renderNav('results')}
           </div>
           <div class="mt-space-xs font-code-sm text-code-sm text-on-surface-variant">
             ${result.schema.numeric_columns.length} Numeric • ${result.schema.categorical_columns.length} Categorical
+            ${result.schema.identifier_columns && result.schema.identifier_columns.length ? ' • ' + result.schema.identifier_columns.length + ' Identifier' : ''}
           </div>
         </div>
         <div class="bg-[#FFE600] border-[3px] border-on-surface p-space-md shadow-[4px_4px_0px_#1c1b1b] flex flex-col justify-between">
@@ -143,6 +155,280 @@ ${renderNav('results')}
           </div>
           <div class="mt-space-xs font-code-sm text-code-sm text-on-surface font-semibold">DATAWATCH GUARDRAIL</div>
         </div>
+      </div>
+
+      <!-- DATASET PROFILING SUMMARY SECTION -->
+      ${result.profile ? `
+      <div class="mt-space-sm flex flex-col gap-space-md">
+        <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-space-md border-b-[3px] border-on-surface pb-space-sm">
+          <div class="flex items-center gap-2">
+            <span class="material-symbols-outlined text-[24px] text-on-surface">data_exploration</span>
+            <h2 class="font-headline-md text-headline-md uppercase tracking-tight text-on-surface m-0">DATASET PROFILING</h2>
+          </div>
+          <div class="flex flex-wrap items-center gap-space-xs font-code-sm text-code-sm">
+            <div class="border-2 border-on-surface bg-surface-container-lowest px-space-sm py-1 shadow-[2px_2px_0px_#1c1b1b]">
+              <span class="text-on-surface-variant uppercase">ROW DELTA:</span>
+              <span class="font-bold text-on-surface ml-1">${(result.profile.current.rows - result.profile.reference.rows) >= 0 ? '+' : ''}${(result.profile.current.rows - result.profile.reference.rows).toLocaleString()} rows</span>
+            </div>
+            <div class="border-2 border-on-surface bg-surface-container-lowest px-space-sm py-1 shadow-[2px_2px_0px_#1c1b1b]">
+              <span class="text-on-surface-variant uppercase">MISSING CELLS:</span>
+              <span class="font-bold text-on-surface ml-1">Ref ${result.profile.reference.missing_cell_percent.toFixed(2)}% vs Cur ${result.profile.current.missing_cell_percent.toFixed(2)}%</span>
+            </div>
+            <div class="border-2 border-on-surface bg-surface-container-lowest px-space-sm py-1 shadow-[2px_2px_0px_#1c1b1b]">
+              <span class="text-on-surface-variant uppercase">DUPLICATE ROWS:</span>
+              <span class="font-bold text-on-surface ml-1">Ref ${result.profile.reference.duplicate_rows} vs Cur ${result.profile.current.duplicate_rows}</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-space-md">
+          <!-- REFERENCE DATASET PROFILE -->
+          <div class="border-[3px] border-on-surface bg-surface-container-lowest p-space-md shadow-[4px_4px_0px_#1c1b1b] flex flex-col justify-between">
+            <div class="flex items-center justify-between border-b-2 border-on-surface pb-space-xs mb-space-sm bg-[#FAF7EE] p-1">
+              <span class="font-label-caps text-label-caps font-bold uppercase text-on-surface flex items-center gap-1">
+                <span class="w-3 h-3 bg-[#FFE600] border border-on-surface inline-block"></span> BASELINE REFERENCE PROFILE
+              </span>
+              <span class="font-code-sm text-code-sm font-bold text-on-surface">${result.reference_file}</span>
+            </div>
+            <div class="grid grid-cols-2 sm:grid-cols-3 gap-space-xs font-code-sm text-code-sm">
+              <div class="border border-on-surface bg-surface-container-low p-2">
+                <div class="font-label-caps text-on-surface-variant text-[10px] uppercase font-bold">TOTAL ROWS</div>
+                <div class="text-lg font-bold text-on-surface">${result.profile.reference.rows.toLocaleString()}</div>
+              </div>
+              <div class="border border-on-surface bg-surface-container-low p-2">
+                <div class="font-label-caps text-on-surface-variant text-[10px] uppercase font-bold">COLUMNS</div>
+                <div class="text-lg font-bold text-on-surface">${result.profile.reference.columns}</div>
+                <div class="text-[10px] text-on-surface-variant">${result.profile.reference.numeric_columns} num • ${result.profile.reference.categorical_columns} cat • ${result.profile.reference.identifier_columns} id</div>
+              </div>
+              <div class="border border-on-surface bg-surface-container-low p-2">
+                <div class="font-label-caps text-on-surface-variant text-[10px] uppercase font-bold">MISSING CELLS</div>
+                <div class="text-lg font-bold text-on-surface">${result.profile.reference.missing_cells.toLocaleString()}</div>
+                <div class="text-[10px] text-on-surface-variant font-bold">${result.profile.reference.missing_cell_percent.toFixed(2)}% of cells</div>
+              </div>
+              <div class="border border-on-surface bg-surface-container-low p-2">
+                <div class="font-label-caps text-on-surface-variant text-[10px] uppercase font-bold">DUPLICATE ROWS</div>
+                <div class="text-lg font-bold text-on-surface">${result.profile.reference.duplicate_rows.toLocaleString()}</div>
+                <div class="text-[10px] text-on-surface-variant font-bold">${result.profile.reference.duplicate_row_percent.toFixed(2)}% of rows</div>
+              </div>
+              <div class="border border-on-surface bg-surface-container-low p-2 sm:col-span-2">
+                <div class="font-label-caps text-on-surface-variant text-[10px] uppercase font-bold">IN-MEMORY SIZE</div>
+                <div class="text-lg font-bold text-on-surface">${_formatBytes(result.profile.reference.memory_usage_bytes)}</div>
+                <div class="text-[10px] text-on-surface-variant font-mono">(${result.profile.reference.memory_usage_bytes.toLocaleString()} bytes)</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- CURRENT DATASET PROFILE -->
+          <div class="border-[3px] border-on-surface bg-surface-container-lowest p-space-md shadow-[4px_4px_0px_#1c1b1b] flex flex-col justify-between">
+            <div class="flex items-center justify-between border-b-2 border-on-surface pb-space-xs mb-space-sm bg-[#FAF7EE] p-1">
+              <span class="font-label-caps text-label-caps font-bold uppercase text-on-surface flex items-center gap-1">
+                <span class="w-3 h-3 bg-[#FF5277] border border-on-surface inline-block"></span> CURRENT PRODUCTION PROFILE
+              </span>
+              <span class="font-code-sm text-code-sm font-bold text-on-surface">${result.current_file}</span>
+            </div>
+            <div class="grid grid-cols-2 sm:grid-cols-3 gap-space-xs font-code-sm text-code-sm">
+              <div class="border border-on-surface bg-surface-container-low p-2">
+                <div class="font-label-caps text-on-surface-variant text-[10px] uppercase font-bold">TOTAL ROWS</div>
+                <div class="text-lg font-bold text-on-surface">${result.profile.current.rows.toLocaleString()}</div>
+              </div>
+              <div class="border border-on-surface bg-surface-container-low p-2">
+                <div class="font-label-caps text-on-surface-variant text-[10px] uppercase font-bold">COLUMNS</div>
+                <div class="text-lg font-bold text-on-surface">${result.profile.current.columns}</div>
+                <div class="text-[10px] text-on-surface-variant">${result.profile.current.numeric_columns} num • ${result.profile.current.categorical_columns} cat • ${result.profile.current.identifier_columns} id</div>
+              </div>
+              <div class="border border-on-surface bg-surface-container-low p-2">
+                <div class="font-label-caps text-on-surface-variant text-[10px] uppercase font-bold">MISSING CELLS</div>
+                <div class="text-lg font-bold ${result.profile.current.missing_cells > 0 ? 'text-[#ba1a1a]' : 'text-on-surface'}">${result.profile.current.missing_cells.toLocaleString()}</div>
+                <div class="text-[10px] text-on-surface-variant font-bold">${result.profile.current.missing_cell_percent.toFixed(2)}% of cells</div>
+              </div>
+              <div class="border border-on-surface bg-surface-container-low p-2">
+                <div class="font-label-caps text-on-surface-variant text-[10px] uppercase font-bold">DUPLICATE ROWS</div>
+                <div class="text-lg font-bold ${result.profile.current.duplicate_rows > 0 ? 'text-[#b58b00]' : 'text-on-surface'}">${result.profile.current.duplicate_rows.toLocaleString()}</div>
+                <div class="text-[10px] text-on-surface-variant font-bold">${result.profile.current.duplicate_row_percent.toFixed(2)}% of rows</div>
+              </div>
+              <div class="border border-on-surface bg-surface-container-low p-2 sm:col-span-2">
+                <div class="font-label-caps text-on-surface-variant text-[10px] uppercase font-bold">IN-MEMORY SIZE</div>
+                <div class="text-lg font-bold text-on-surface">${_formatBytes(result.profile.current.memory_usage_bytes)}</div>
+                <div class="text-[10px] text-on-surface-variant font-mono">(${result.profile.current.memory_usage_bytes.toLocaleString()} bytes)</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      ` : ''}
+
+      <!-- DATA QUALITY SECTION -->
+      ${result.quality ? `
+      <div class="mt-space-lg mb-space-md flex flex-col gap-space-md">
+        <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-space-md border-b-[3px] border-on-surface pb-space-sm">
+          <h2 class="font-headline-md text-headline-md uppercase tracking-tight text-on-surface m-0">DATA QUALITY</h2>
+          <div class="flex flex-wrap items-center gap-space-xs font-code-sm text-code-sm">
+             <div class="border-2 border-on-surface bg-surface-container-lowest px-space-sm py-1 shadow-[2px_2px_0px_#1c1b1b]">
+               <span class="text-on-surface-variant uppercase">CHECKS:</span>
+               <span class="font-bold text-on-surface ml-1">${result.quality.total_expectations}</span>
+             </div>
+             <div class="border-2 border-on-surface bg-[#00D26A] px-space-sm py-1 shadow-[2px_2px_0px_#1c1b1b]">
+               <span class="text-on-surface uppercase">PASSED:</span>
+               <span class="font-bold text-on-surface ml-1">${result.quality.passed}</span>
+             </div>
+             <div class="border-2 border-on-surface ${result.quality.failed > 0 ? 'bg-[#FF5277]' : 'bg-surface-container-lowest'} px-space-sm py-1 shadow-[2px_2px_0px_#1c1b1b]">
+               <span class="text-on-surface uppercase">FAILED:</span>
+               <span class="font-bold text-on-surface ml-1">${result.quality.failed}</span>
+             </div>
+             <div class="border-2 border-on-surface bg-surface-container-lowest px-space-sm py-1 shadow-[2px_2px_0px_#1c1b1b]">
+               <span class="text-on-surface-variant uppercase">SCORE:</span>
+               <span class="font-bold text-on-surface ml-1">${result.quality.success_percent.toFixed(1)}%</span>
+             </div>
+             <div class="border-2 border-on-surface ${result.quality.overall_status === 'FAIL' ? 'bg-[#FF5277]' : result.quality.overall_status === 'ATTENTION' ? 'bg-[#FFE600]' : 'bg-[#00D26A]'} px-space-sm py-1 shadow-[2px_2px_0px_#1c1b1b]">
+               <span class="text-on-surface uppercase font-bold">STATUS: ${result.quality.overall_status}</span>
+             </div>
+          </div>
+        </div>
+
+        <div class="border-[3.5px] border-on-surface bg-surface-container-lowest shadow-[6px_6px_0px_#1c1b1b] overflow-x-auto">
+          <table class="w-full text-left border-collapse font-code-sm text-code-sm">
+            <thead>
+              <tr class="bg-surface-container-high border-b-[3px] border-on-surface text-on-surface">
+                <th class="p-space-sm font-label-caps text-label-caps uppercase tracking-wider border-r-2 border-on-surface">CHECK</th>
+                <th class="p-space-sm font-label-caps text-label-caps uppercase tracking-wider border-r-2 border-on-surface">COLUMN</th>
+                <th class="p-space-sm font-label-caps text-label-caps uppercase tracking-wider border-r-2 border-on-surface text-center">STATUS</th>
+                <th class="p-space-sm font-label-caps text-label-caps uppercase tracking-wider border-r-2 border-on-surface">EXPECTED</th>
+                <th class="p-space-sm font-label-caps text-label-caps uppercase tracking-wider">OBSERVED</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y-2 divide-on-surface">
+              ${result.quality.expectations.map((q, idx) => {
+                const statusBg = q.status === 'PASS' ? 'bg-surface-container' : q.status === 'WARNING' ? 'bg-[#FFE600]' : 'bg-[#FF5277]';
+                const statusText = 'text-on-surface';
+                return `
+                <tr class="hover:bg-primary-container/20 cursor-pointer transition-colors" onclick="window.selectQuality(${idx})">
+                  <td class="p-space-sm border-r-2 border-on-surface font-bold text-on-surface">${q.expectation}</td>
+                  <td class="p-space-sm border-r-2 border-on-surface uppercase font-semibold">${q.column || 'N/A'}</td>
+                  <td class="p-space-sm border-r-2 border-on-surface text-center font-bold">
+                    <span class="px-2 py-0.5 border border-on-surface shadow-[1px_1px_0px_#1c1b1b] ${statusBg} ${statusText}">${q.status}</span>
+                  </td>
+                  <td class="p-space-sm border-r-2 border-on-surface">${q.expected_value}</td>
+                  <td class="p-space-sm text-on-surface ${q.status !== 'PASS' ? 'font-bold' : ''}">${q.observed_value}</td>
+                </tr>
+                `;
+              }).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      ` : ''}
+
+      <!-- ML MODEL IMPACT SECTION -->
+      <div class="mt-space-lg mb-space-md flex flex-col gap-space-md">
+        <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-space-md border-b-[3px] border-on-surface pb-space-sm">
+          <div class="flex items-center gap-space-xs">
+            <span class="material-symbols-outlined text-[24px] text-on-surface">model_training</span>
+            <h2 class="font-headline-md text-headline-md uppercase tracking-tight text-on-surface m-0">ML MODEL IMPACT</h2>
+          </div>
+          ${result.model_impact && result.model_impact.status === 'COMPLETED' ? `
+          <div class="flex flex-wrap items-center gap-space-xs font-code-sm text-code-sm">
+             <div class="border-2 border-on-surface bg-surface-container-lowest px-space-sm py-1 shadow-[2px_2px_0px_#1c1b1b]">
+               <span class="text-on-surface-variant uppercase">MODEL:</span>
+               <span class="font-bold text-on-surface ml-1">${result.model_impact.model_name}</span>
+             </div>
+             <div class="border-2 border-on-surface bg-primary-container px-space-sm py-1 shadow-[2px_2px_0px_#1c1b1b]">
+               <span class="text-on-surface uppercase font-bold">TARGET:</span>
+               <span class="font-bold text-on-surface ml-1">${result.model_impact.target_column}</span>
+             </div>
+             <div class="border-2 border-on-surface ${result.model_impact.verdict === 'PERFORMANCE DECREASE OBSERVED' ? 'bg-[#FF5277]' : 'bg-[#00D26A]'} px-space-sm py-1 shadow-[2px_2px_0px_#1c1b1b]">
+               <span class="text-on-surface uppercase font-bold">${result.model_impact.verdict}</span>
+             </div>
+          </div>
+          ` : ''}
+        </div>
+
+        ${(!result.model_impact || result.model_impact.status === 'NOT_REQUESTED') ? `
+        <div class="border-[3px] border-on-surface bg-surface-container-lowest p-space-md shadow-[4px_4px_0px_#1c1b1b] flex flex-col sm:flex-row items-start sm:items-center justify-between gap-space-md">
+          <div class="flex flex-col gap-1">
+            <span class="font-label-caps text-label-caps uppercase font-bold text-on-surface-variant">SUPERVISED CLASSIFICATION EVALUATION</span>
+            <div class="font-headline-sm text-headline-sm uppercase font-bold text-on-surface">NOT EVALUATED FOR THIS ANALYSIS</div>
+            <p class="font-body-md text-body-md text-on-surface-variant m-0">
+              Model performance evaluation was not requested for this run. Provide a target column (e.g., churn) to measure holdout accuracy, precision, recall, and macro F1-score across reference and current datasets.
+            </p>
+          </div>
+          <a class="shrink-0 bg-primary-container text-on-surface border-[2.5px] border-on-surface font-label-caps text-label-caps font-bold uppercase px-space-md py-2 shadow-[2px_2px_0px_#1c1b1b] hover:-translate-x-0.5 hover:-translate-y-0.5 hover:shadow-[4px_4px_0px_#1c1b1b] transition-all" href="#/analyze">
+            [ ENABLE IN NEXT ANALYSIS → ]
+          </a>
+        </div>
+        ` : (result.model_impact.status === 'NOT_POSSIBLE' || result.model_impact.status === 'FAILED') ? `
+        <div class="border-[3px] border-on-surface bg-tertiary-container/30 p-space-md shadow-[4px_4px_0px_#1c1b1b] flex flex-col gap-space-xs">
+          <div class="flex items-center gap-space-xs">
+            <span class="material-symbols-outlined text-tertiary text-[20px]">warning</span>
+            <span class="font-headline-sm text-headline-sm uppercase font-bold text-on-surface">MODEL IMPACT: ${result.model_impact.status}</span>
+          </div>
+          <p class="font-body-md text-body-md text-on-surface m-0 font-medium">
+            ${result.model_impact.message || 'Model impact evaluation could not be completed for the provided data.'}
+          </p>
+        </div>
+        ` : `
+        <div class="flex flex-col gap-space-md">
+          <!-- Sample Metadata & Objective Metrics -->
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-space-sm font-code-sm text-code-sm">
+            <div class="border-2 border-on-surface bg-surface-container-lowest p-space-xs shadow-[2px_2px_0px_#1c1b1b]">
+              <span class="font-label-caps text-label-caps text-on-surface-variant block uppercase font-bold">REF TRAIN SAMPLES</span>
+              <span class="text-lg font-bold text-on-surface">${result.model_impact.reference_train_rows.toLocaleString()}</span>
+              <span class="text-[10px] text-on-surface-variant block">80% baseline split</span>
+            </div>
+            <div class="border-2 border-on-surface bg-surface-container-lowest p-space-xs shadow-[2px_2px_0px_#1c1b1b]">
+              <span class="font-label-caps text-label-caps text-on-surface-variant block uppercase font-bold">REF HOLDOUT EVAL SAMPLES</span>
+              <span class="text-lg font-bold text-on-surface">${result.model_impact.reference_evaluation_rows.toLocaleString()}</span>
+              <span class="text-[10px] text-on-surface-variant block">20% holdout split</span>
+            </div>
+            <div class="border-2 border-on-surface bg-surface-container-lowest p-space-xs shadow-[2px_2px_0px_#1c1b1b]">
+              <span class="font-label-caps text-label-caps text-on-surface-variant block uppercase font-bold">CURRENT EVAL SAMPLES</span>
+              <span class="text-lg font-bold text-on-surface">${result.model_impact.current_evaluation_rows.toLocaleString()}</span>
+              <span class="text-[10px] text-on-surface-variant block">Labelled production batch</span>
+            </div>
+          </div>
+
+          <!-- Performance Comparison Table -->
+          <div class="border-[3.5px] border-on-surface bg-surface-container-lowest shadow-[6px_6px_0px_#1c1b1b] overflow-x-auto">
+            <table class="w-full text-left border-collapse font-code-sm text-code-sm">
+              <thead>
+                <tr class="bg-surface-container-high border-b-[3px] border-on-surface text-on-surface">
+                  <th class="p-space-sm font-label-caps text-label-caps uppercase tracking-wider border-r-2 border-on-surface">METRIC (MACRO)</th>
+                  <th class="p-space-sm font-label-caps text-label-caps uppercase tracking-wider border-r-2 border-on-surface text-right">REFERENCE HOLDOUT</th>
+                  <th class="p-space-sm font-label-caps text-label-caps uppercase tracking-wider border-r-2 border-on-surface text-right">CURRENT LABELLED</th>
+                  <th class="p-space-sm font-label-caps text-label-caps uppercase tracking-wider text-right">CHANGE (PP)</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y-2 divide-on-surface">
+                ${['accuracy', 'precision', 'recall', 'f1_score'].map(m => {
+                  const mLabel = m === 'f1_score' ? 'F1-SCORE (MACRO)' : m.toUpperCase() + ' (MACRO)';
+                  const refScore = result.model_impact.reference_metrics ? (result.model_impact.reference_metrics[m] * 100).toFixed(2) + '%' : 'N/A';
+                  const curScore = result.model_impact.current_metrics ? (result.model_impact.current_metrics[m] * 100).toFixed(2) + '%' : 'N/A';
+                  const deltaPP = result.model_impact.metric_changes_percentage_points ? result.model_impact.metric_changes_percentage_points[m] : 0;
+                  const deltaStr = (deltaPP >= 0 ? '+' : '') + deltaPP.toFixed(2) + ' pp';
+                  const deltaColor = deltaPP < -5.0 ? 'text-[#ba1a1a] font-bold' : (deltaPP < 0 ? 'text-[#b58b00] font-bold' : 'text-[#008744] font-bold');
+                  return `
+                  <tr class="hover:bg-primary-container/10">
+                    <td class="p-space-sm border-r-2 border-on-surface font-bold uppercase text-on-surface">${mLabel}</td>
+                    <td class="p-space-sm border-r-2 border-on-surface text-right font-mono">${refScore}</td>
+                    <td class="p-space-sm border-r-2 border-on-surface text-right font-mono font-bold">${curScore}</td>
+                    <td class="p-space-sm text-right font-mono ${deltaColor}">${deltaStr}</td>
+                  </tr>`;
+                }).join('')}
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Interpretation Banner -->
+          <div class="border-[2.5px] border-on-surface bg-surface p-space-sm shadow-[2px_2px_0px_#1c1b1b] flex items-start gap-space-sm">
+            <span class="material-symbols-outlined text-[20px] text-on-surface shrink-0 mt-0.5">psychology_alt</span>
+            <div class="flex flex-col gap-0.5">
+              <span class="font-label-caps text-label-caps font-bold uppercase text-on-surface">MODEL IMPACT INTERPRETATION</span>
+              <p class="font-body-md text-body-md text-on-surface m-0 leading-relaxed">
+                ${result.model_impact.interpretation}
+              </p>
+            </div>
+          </div>
+        </div>
+        `}
       </div>
 
       <!-- MAIN 2-COLUMN LAYOUT -->
@@ -313,6 +599,46 @@ ${renderFooter()}
     return 'bg-[#00D26A]';
   }
 
+  window.selectQuality = function(idx) {
+    var q = result.quality.expectations[idx];
+    if (!q) return;
+
+    // Remove selection highlight from drift table since we selected quality
+    selectedFeatureIdx = -1;
+    renderTable();
+
+    // Update drawer header
+    document.getElementById('detail-feature-title').textContent = 'QUALITY CHECK: ' + q.expectation;
+    var badge = document.getElementById('detail-feature-badge');
+    badge.textContent = q.status;
+    var sevBg = q.status === 'PASS' ? 'bg-[#00D26A]' : q.status === 'WARNING' ? 'bg-[#FFE600]' : 'bg-[#FF5277]';
+    badge.className = 'border-2 border-on-surface font-label-caps text-label-caps font-bold px-2 py-0.5 shadow-[2px_2px_0px_#1c1b1b] ' + sevBg + ' text-on-surface';
+
+    // Clear chart
+    var canvas = document.getElementById('dist-chart');
+    if (canvas) {
+      var ctx = canvas.getContext('2d');
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+    }
+
+    var overThreshold = q.status !== 'PASS';
+    var explanation = '<strong class="font-bold">' + q.expectation + '</strong> ' + (q.column ? 'on column <strong class="font-bold">' + q.column + '</strong>' : 'on dataset') + ' returned <strong class="font-bold">' + q.status + '</strong>. ';
+    explanation += 'Expected <strong class="font-bold">' + q.expected_value + '</strong>, but observed <strong class="font-bold">' + q.observed_value + '</strong>.';
+
+    var content = '<div>' +
+      '<span class="font-label-caps text-label-caps text-on-surface-variant uppercase font-bold tracking-wider block mb-space-xs">QUALITY METRICS</span>' +
+      '<div class="grid grid-cols-2 gap-space-xs border-2 border-on-surface bg-surface-container-low p-space-xs">' +
+        _statCell('EXPECTED', q.expected_value, '') +
+        _statCell('OBSERVED', q.observed_value, overThreshold ? 'text-[#ba1a1a]' : '') +
+        _statCell('COLUMN', q.column || 'N/A', '') +
+        _statCell('STATUS', q.status, overThreshold ? 'bg-[#FF5277] font-bold text-on-surface' : 'bg-[#00D26A] font-bold text-on-surface') +
+      '</div>' +
+    '</div>' +
+    _renderCommonDrawerBottom({ name: q.expectation, type: 'quality' }, explanation);
+    
+    document.getElementById('drawer-content').innerHTML = content;
+  };
+
   function selectFeature(idx) {
     selectedFeatureIdx = idx;
     var f = features[idx];
@@ -333,7 +659,26 @@ ${renderFooter()}
   function buildDrawerContent(f) {
     var overThreshold = f.status === 'DRIFT';
 
-    if (f.type === 'categorical') {
+    function _f(val, digits) {
+      if (digits === undefined) digits = 4;
+      return (val !== null && val !== undefined) ? Number(val).toFixed(digits) : 'N/A';
+    }
+
+    if (f.type === 'identifier') {
+      var explanation = '<strong class="font-bold">' + f.name + '</strong> is an identifier feature. Identifiers are not evaluated for statistical distribution drift (PSI/JS), but are monitored for structural data quality issues such as duplicates and missing values.';
+      return '<div>' +
+        '<span class="font-label-caps text-label-caps text-on-surface-variant uppercase font-bold tracking-wider block mb-space-xs">IDENTIFIER PROFILE &amp; STRUCTURAL METRICS</span>' +
+        '<div class="grid grid-cols-2 gap-space-xs border-2 border-on-surface bg-surface-container-low p-space-xs">' +
+          _statCell('STATUS', f.status, '') +
+          _statCell('SEVERITY', f.severity, '') +
+          _statCell('REF UNIQUE IDS', (f.reference_unique_count !== null && f.reference_unique_count !== undefined ? f.reference_unique_count.toLocaleString() : 'N/A'), '') +
+          _statCell('CUR UNIQUE IDS', (f.current_unique_count !== null && f.current_unique_count !== undefined ? f.current_unique_count.toLocaleString() : 'N/A'), '') +
+          _statCell('REF MISSING', f.reference_missing_count + ' (' + f.reference_missing_percent.toFixed(2) + '%)', '') +
+          _statCell('CUR MISSING', f.current_missing_count + ' (' + f.current_missing_percent.toFixed(2) + '%)', f.current_missing_count > 0 ? 'text-[#ba1a1a]' : '') +
+        '</div>' +
+      '</div>' +
+      _renderCommonDrawerBottom(f, explanation);
+    } else if (f.type === 'categorical') {
       var thresholdDesc = 'Categorical JS threshold: ' + catJsThreshold;
       var explanation = '<strong class="font-bold">' + f.name + '</strong> is a categorical feature with JS divergence of <strong class="font-bold">' + f.js_divergence.toFixed(4) + '</strong>. ' +
         (overThreshold
@@ -344,12 +689,21 @@ ${renderFooter()}
       if (f.category_distribution && f.category_distribution.categories) {
         for (var i = 0; i < f.category_distribution.categories.length; i++) {
           catRows += '<tr class="border-b border-on-surface/20 hover:bg-black/5">' +
-            '<td class="py-1 px-2 border-r border-on-surface/20">' + f.category_distribution.categories[i] + '</td>' +
+            '<td class="py-1 px-2 border-r border-on-surface/20 font-bold">' + f.category_distribution.categories[i] + '</td>' +
             '<td class="py-1 px-2 border-r border-on-surface/20 text-right">' + f.category_distribution.reference_percentages[i].toFixed(1) + '%</td>' +
-            '<td class="py-1 px-2 text-right">' + f.category_distribution.current_percentages[i].toFixed(1) + '%</td>' +
+            '<td class="py-1 px-2 text-right font-bold">' + f.category_distribution.current_percentages[i].toFixed(1) + '%</td>' +
             '</tr>';
         }
       }
+
+      var refUnique = f.reference_unique_count !== null && f.reference_unique_count !== undefined ? f.reference_unique_count : 'N/A';
+      var curUnique = f.current_unique_count !== null && f.current_unique_count !== undefined ? f.current_unique_count : 'N/A';
+      var refMode = f.reference_mode || 'N/A';
+      var curMode = f.current_mode || 'N/A';
+      var refModeCount = f.reference_mode_count !== null && f.reference_mode_count !== undefined ? f.reference_mode_count.toLocaleString() : 'N/A';
+      var curModeCount = f.current_mode_count !== null && f.current_mode_count !== undefined ? f.current_mode_count.toLocaleString() : 'N/A';
+      var refModePct = f.reference_mode_percent !== null && f.reference_mode_percent !== undefined ? f.reference_mode_percent.toFixed(1) + '%' : 'N/A';
+      var curModePct = f.current_mode_percent !== null && f.current_mode_percent !== undefined ? f.current_mode_percent.toFixed(1) + '%' : 'N/A';
 
       return '<div>' +
         '<span class="font-label-caps text-label-caps text-on-surface-variant uppercase font-bold tracking-wider block mb-space-xs">CATEGORICAL METRICS</span>' +
@@ -358,6 +712,28 @@ ${renderFooter()}
           _statCell('STATUS', f.status, overThreshold ? 'bg-[#FF5277] font-bold text-on-surface' : '') +
           _statCell('SEVERITY', f.severity, overThreshold ? 'bg-[#FF5277] font-bold text-on-surface' : '') +
         '</div>' +
+      '</div>' +
+      '<div class="border-[2px] border-on-surface bg-surface-container-lowest shadow-[3px_3px_0px_#1c1b1b] mt-space-sm mb-space-sm">' +
+        '<div class="bg-surface-container-highest border-b-2 border-on-surface p-space-xs font-label-caps font-bold uppercase text-on-surface flex items-center justify-between">' +
+          '<span>CATEGORICAL PROFILE COMPARISON</span>' +
+          '<span class="text-[10px] text-on-surface-variant">REF vs CUR</span>' +
+        '</div>' +
+        '<table class="w-full text-left border-collapse font-code-sm text-code-sm">' +
+          '<thead class="border-b-2 border-on-surface bg-surface-container-low">' +
+            '<tr>' +
+              '<th class="py-1 px-2 border-r-2 border-on-surface">STATISTIC</th>' +
+              '<th class="py-1 px-2 border-r-2 border-on-surface text-right">REFERENCE</th>' +
+              '<th class="py-1 px-2 text-right">CURRENT</th>' +
+            '</tr>' +
+          '</thead>' +
+          '<tbody class="divide-y divide-on-surface/20">' +
+            '<tr><td class="py-1 px-2 border-r font-bold">Distinct Categories</td><td class="py-1 px-2 border-r text-right">' + refUnique + '</td><td class="py-1 px-2 text-right">' + curUnique + '</td></tr>' +
+            '<tr><td class="py-1 px-2 border-r font-bold">Most Frequent (Mode)</td><td class="py-1 px-2 border-r text-right font-bold">' + refMode + '</td><td class="py-1 px-2 text-right font-bold">' + curMode + '</td></tr>' +
+            '<tr><td class="py-1 px-2 border-r font-bold">Mode Frequency</td><td class="py-1 px-2 border-r text-right">' + refModeCount + '</td><td class="py-1 px-2 text-right">' + curModeCount + '</td></tr>' +
+            '<tr><td class="py-1 px-2 border-r font-bold">Mode Percentage</td><td class="py-1 px-2 border-r text-right">' + refModePct + '</td><td class="py-1 px-2 text-right">' + curModePct + '</td></tr>' +
+            '<tr><td class="py-1 px-2 border-r font-bold">Missing Values</td><td class="py-1 px-2 border-r text-right">' + f.reference_missing_count + ' (' + f.reference_missing_percent.toFixed(2) + '%)</td><td class="py-1 px-2 text-right">' + f.current_missing_count + ' (' + f.current_missing_percent.toFixed(2) + '%)</td></tr>' +
+          '</tbody>' +
+        '</table>' +
       '</div>' +
       '<div class="border-[2px] border-on-surface bg-surface-container-lowest shadow-[3px_3px_0px_#1c1b1b] mt-space-sm mb-space-sm">' +
         '<div class="bg-surface-container-highest border-b-2 border-on-surface p-space-xs font-label-caps font-bold uppercase text-on-surface">' +
@@ -371,19 +747,36 @@ ${renderFooter()}
               '<th class="py-1 px-2 text-right">CURRENT</th>' +
             '</tr>' +
           '</thead>' +
-          '<tbody>' + catRows + '</tbody>' +
+          '<tbody class="divide-y divide-on-surface/20">' + catRows + '</tbody>' +
         '</table>' +
       '</div>' +
       _renderCommonDrawerBottom(f, explanation);
     } else {
-      var refMean = f.reference_mean !== null && f.reference_mean !== undefined ? f.reference_mean.toFixed(4) : 'N/A';
-      var curMean = f.current_mean !== null && f.current_mean !== undefined ? f.current_mean.toFixed(4) : 'N/A';
+      var refMean = _f(f.reference_mean);
+      var curMean = _f(f.current_mean);
       var delta   = f.mean_change_percent !== null && f.mean_change_percent !== undefined
         ? (f.mean_change_percent >= 0 ? '+' : '') + f.mean_change_percent.toFixed(1) + '%'
         : 'N/A';
-      var ks    = f.ks_statistic !== null && f.ks_statistic !== undefined ? f.ks_statistic.toFixed(4) : 'N/A';
+      var ks    = _f(f.ks_statistic);
       var ksPval = f.ks_p_value !== null && f.ks_p_value !== undefined ? (f.ks_p_value < 0.0001 ? '<0.0001' : f.ks_p_value.toFixed(4)) : 'N/A';
-      var wass  = f.wasserstein_distance !== null && f.wasserstein_distance !== undefined ? f.wasserstein_distance.toFixed(4) : 'N/A';
+      var wass  = _f(f.wasserstein_distance);
+
+      var refMedian = _f(f.reference_median);
+      var curMedian = _f(f.current_median);
+      var refStd = _f(f.reference_std);
+      var curStd = _f(f.current_std);
+      var refVar = _f(f.reference_variance);
+      var curVar = _f(f.current_variance);
+      var refMin = _f(f.reference_min);
+      var curMin = _f(f.current_min);
+      var refMax = _f(f.reference_max);
+      var curMax = _f(f.current_max);
+      var refQ25 = _f(f.reference_q25);
+      var curQ25 = _f(f.current_q25);
+      var refQ75 = _f(f.reference_q75);
+      var curQ75 = _f(f.current_q75);
+      var refIQR = _f(f.reference_iqr);
+      var curIQR = _f(f.current_iqr);
       
       var thresholdDesc = 'PSI threshold: ' + psiThreshold;
       var metricDisplay = 'registered a PSI of <strong class="font-bold">' + f.psi.toFixed(4) + '</strong>';
@@ -395,31 +788,62 @@ ${renderFooter()}
       explanation += ' Reference mean: ' + refMean + ' → Current mean: ' + curMean + ' (' + delta + ').';
 
       return '<div>' +
-        '<span class="font-label-caps text-label-caps text-on-surface-variant uppercase font-bold tracking-wider block mb-space-xs">STATISTICAL COMPARISON MATRIX</span>' +
+        '<span class="font-label-caps text-label-caps text-on-surface-variant uppercase font-bold tracking-wider block mb-space-xs">DRIFT METRICS MATRIX</span>' +
         '<div class="grid grid-cols-3 gap-space-xs border-2 border-on-surface bg-surface-container-low p-space-xs">' +
-          _statCell('REF MEAN',   refMean, '') +
-          _statCell('CURR MEAN',  curMean, '') +
-          _statCell('DELTA',      delta,   overThreshold ? 'bg-[#FF5277]' : '') +
           _statCell('PSI VALUE',  f.psi.toFixed(4), overThreshold ? 'text-[#ba1a1a]' : '', 'LIMIT: ' + psiThreshold) +
-          _statCell('KS STAT',    ks, '',    'P: ' + ksPval) +
-          _statCell('WASSERSTEIN',wass, '',  'L1 DISTANCE') +
+          _statCell('STATUS',     f.status, overThreshold ? 'bg-[#FF5277] font-bold text-on-surface' : '') +
+          _statCell('SEVERITY',   f.severity, overThreshold ? 'bg-[#FF5277] font-bold text-on-surface' : '') +
+          _statCell('KS STAT',    ks, '', 'P: ' + ksPval) +
+          _statCell('WASSERSTEIN',wass, '', 'L1 DISTANCE') +
+          _statCell('MEAN DELTA', delta, overThreshold ? 'bg-[#FF5277]' : '') +
         '</div>' +
+      '</div>' +
+      '<div class="border-[2px] border-on-surface bg-surface-container-lowest shadow-[3px_3px_0px_#1c1b1b] mt-space-sm mb-space-sm">' +
+        '<div class="bg-surface-container-highest border-b-2 border-on-surface p-space-xs font-label-caps font-bold uppercase text-on-surface flex items-center justify-between">' +
+          '<span>NUMERICAL STATISTICAL PROFILE</span>' +
+          '<span class="text-[10px] text-on-surface-variant">REF vs CUR</span>' +
+        '</div>' +
+        '<table class="w-full text-left border-collapse font-code-sm text-code-sm">' +
+          '<thead class="border-b-2 border-on-surface bg-surface-container-low">' +
+            '<tr>' +
+              '<th class="py-1 px-2 border-r-2 border-on-surface">STATISTIC</th>' +
+              '<th class="py-1 px-2 border-r-2 border-on-surface text-right">REFERENCE</th>' +
+              '<th class="py-1 px-2 text-right">CURRENT</th>' +
+            '</tr>' +
+          '</thead>' +
+          '<tbody class="divide-y divide-on-surface/20">' +
+            '<tr><td class="py-1 px-2 border-r font-bold">Mean</td><td class="py-1 px-2 border-r text-right">' + refMean + '</td><td class="py-1 px-2 text-right">' + curMean + '</td></tr>' +
+            '<tr><td class="py-1 px-2 border-r font-bold">Median</td><td class="py-1 px-2 border-r text-right">' + refMedian + '</td><td class="py-1 px-2 text-right">' + curMedian + '</td></tr>' +
+            '<tr><td class="py-1 px-2 border-r font-bold">Std Dev (ddof=1)</td><td class="py-1 px-2 border-r text-right">' + refStd + '</td><td class="py-1 px-2 text-right">' + curStd + '</td></tr>' +
+            '<tr><td class="py-1 px-2 border-r font-bold">Variance (ddof=1)</td><td class="py-1 px-2 border-r text-right">' + refVar + '</td><td class="py-1 px-2 text-right">' + curVar + '</td></tr>' +
+            '<tr><td class="py-1 px-2 border-r font-bold">Minimum</td><td class="py-1 px-2 border-r text-right">' + refMin + '</td><td class="py-1 px-2 text-right">' + curMin + '</td></tr>' +
+            '<tr><td class="py-1 px-2 border-r font-bold">Maximum</td><td class="py-1 px-2 border-r text-right">' + refMax + '</td><td class="py-1 px-2 text-right">' + curMax + '</td></tr>' +
+            '<tr><td class="py-1 px-2 border-r font-bold">25th Percentile (Q25)</td><td class="py-1 px-2 border-r text-right">' + refQ25 + '</td><td class="py-1 px-2 text-right">' + curQ25 + '</td></tr>' +
+            '<tr><td class="py-1 px-2 border-r font-bold">75th Percentile (Q75)</td><td class="py-1 px-2 border-r text-right">' + refQ75 + '</td><td class="py-1 px-2 text-right">' + curQ75 + '</td></tr>' +
+            '<tr><td class="py-1 px-2 border-r font-bold">IQR (Q75 - Q25)</td><td class="py-1 px-2 border-r text-right">' + refIQR + '</td><td class="py-1 px-2 text-right">' + curIQR + '</td></tr>' +
+            '<tr><td class="py-1 px-2 border-r font-bold">Missing Values</td><td class="py-1 px-2 border-r text-right">' + f.reference_missing_count + ' (' + f.reference_missing_percent.toFixed(2) + '%)</td><td class="py-1 px-2 text-right">' + f.current_missing_count + ' (' + f.current_missing_percent.toFixed(2) + '%)</td></tr>' +
+          '</tbody>' +
+        '</table>' +
       '</div>' +
       _renderCommonDrawerBottom(f, explanation);
     }
   }
 
   function _renderCommonDrawerBottom(f, explanation) {
-    return '<div class="border-[2px] border-on-surface p-space-sm bg-surface-container-lowest shadow-[3px_3px_0px_#1c1b1b]">' +
-      '<div class="flex items-center justify-between border-b-2 border-on-surface pb-1 mb-space-sm">' +
-        '<span class="font-label-caps text-label-caps font-bold uppercase text-on-surface">POPULATION DISTRIBUTION DENSITY</span>' +
-        '<div class="flex items-center gap-space-sm font-label-caps text-label-caps">' +
-          '<span class="flex items-center gap-1 font-bold"><span class="w-3 h-3 bg-[#FFE600] border border-on-surface inline-block"></span> BASELINE</span>' +
-          '<span class="flex items-center gap-1 font-bold"><span class="w-3 h-3 bg-[#FF5277] border border-on-surface inline-block"></span> CURRENT</span>' +
+    var chartSection = f.type === 'quality' ? '' : (
+      '<div class="border-[2px] border-on-surface p-space-sm bg-surface-container-lowest shadow-[3px_3px_0px_#1c1b1b] mb-space-sm">' +
+        '<div class="flex items-center justify-between border-b-2 border-on-surface pb-1 mb-space-sm">' +
+          '<span class="font-label-caps text-label-caps font-bold uppercase text-on-surface">POPULATION DISTRIBUTION DENSITY</span>' +
+          '<div class="flex items-center gap-space-sm font-label-caps text-label-caps">' +
+            '<span class="flex items-center gap-1 font-bold"><span class="w-3 h-3 bg-[#FFE600] border border-on-surface inline-block"></span> BASELINE</span>' +
+            '<span class="flex items-center gap-1 font-bold"><span class="w-3 h-3 bg-[#FF5277] border border-on-surface inline-block"></span> CURRENT</span>' +
+          '</div>' +
         '</div>' +
-      '</div>' +
-      '<div class="w-full"><canvas id="dist-chart" height="160" style="width:100%;display:block;"></canvas></div>' +
-    '</div>' +
+        '<div class="w-full"><canvas id="dist-chart" height="160" style="width:100%;display:block;"></canvas></div>' +
+      '</div>'
+    );
+
+    return chartSection +
     '<div class="border-[2px] border-on-surface bg-surface p-space-sm shadow-[2px_2px_0px_#1c1b1b]">' +
       '<div class="flex items-center gap-1 border-b border-on-surface pb-1 mb-1 font-label-caps text-label-caps font-bold text-on-surface">' +
         '<span class="material-symbols-outlined text-[15px] text-[#BA1A1A]">psychology_alt</span>' +
@@ -568,8 +992,11 @@ ${renderFooter()}
 // ---- Helper rendering functions (server-side template helpers) ----
 
 function _renderFeatureRow(f, idx, threshold) {
-  const primaryMetric = f.type === 'numeric' ? f.psi : f.js_divergence;
-  const psiColor = f.status === 'DRIFT' ? 'text-[#ba1a1a]' : (f.status === 'WARNING' ? 'text-[#b58b00]' : 'text-on-surface');
+  const isId = f.type === 'identifier';
+  const primaryMetric = isId ? null : (f.type === 'numeric' ? f.psi : f.js_divergence);
+  const primaryMetricStr = isId ? 'N/A' : (f.type === 'numeric' ? 'PSI ' + primaryMetric.toFixed(3) : 'JS ' + primaryMetric.toFixed(3));
+  
+  const psiColor = isId ? 'text-surface-dim' : (f.status === 'DRIFT' ? 'text-[#ba1a1a]' : (f.status === 'WARNING' ? 'text-[#b58b00]' : 'text-on-surface'));
   const statusBg = f.status === 'DRIFT' ? (f.severity === 'CRITICAL' ? 'bg-[#FF5277]' : 'bg-[#FFE600]') : 'bg-[#00D26A]';
   const badgeBg  = _severityBgClass(f.severity);
   const rowBg    = f.status === 'DRIFT' ? 'bg-primary-container/10' : 'bg-surface-container-lowest';
@@ -588,7 +1015,7 @@ function _renderFeatureRow(f, idx, threshold) {
       ${f.name}${f.status === 'DRIFT' ? '<span class="material-symbols-outlined text-[14px] text-[#FF5277] align-middle ml-1">arrow_forward</span>' : ''}
     </td>
     <td class="p-space-sm border-r-2 border-on-surface uppercase">${f.type}</td>
-    <td class="p-space-sm border-r-2 border-on-surface text-right font-bold ${psiColor}">${(f.type === 'numeric' ? 'PSI ' : 'JS ') + primaryMetric.toFixed(3)}</td>
+    <td class="p-space-sm border-r-2 border-on-surface text-right font-bold ${psiColor}">${primaryMetricStr}</td>
     <td class="p-space-sm border-r-2 border-on-surface text-right">${ksPval}</td>
     <td class="p-space-sm border-r-2 border-on-surface text-center">
       <span class="inline-block ${statusBg} text-on-surface border border-on-surface font-label-caps text-label-caps font-bold px-1.5 py-0.5 shadow-[1px_1px_0px_#1c1b1b]">${f.status}</span>
@@ -602,18 +1029,64 @@ function _renderFeatureRow(f, idx, threshold) {
 function _renderDrawerContent(f, threshold) {
   const over = f.status === 'DRIFT';
 
-  if (f.type === 'categorical') {
+  if (f.type === 'identifier') {
+    const explanation = `<strong class="font-bold">${f.name}</strong> is an identifier feature. Identifiers are not evaluated for statistical distribution drift (PSI/JS), but are monitored for structural data quality issues such as duplicates and missing values.`;
+    const refUnique = f.reference_unique_count !== null && f.reference_unique_count !== undefined ? f.reference_unique_count.toLocaleString() : 'N/A';
+    const curUnique = f.current_unique_count !== null && f.current_unique_count !== undefined ? f.current_unique_count.toLocaleString() : 'N/A';
+    const refMissing = `${f.reference_missing_count} (${f.reference_missing_percent.toFixed(2)}%)`;
+    const curMissing = `${f.current_missing_count} (${f.current_missing_percent.toFixed(2)}%)`;
+    return `
+    <div>
+      <span class="font-label-caps text-label-caps text-on-surface-variant uppercase font-bold tracking-wider block mb-space-xs">IDENTIFIER PROFILE &amp; STRUCTURAL METRICS</span>
+      <div class="grid grid-cols-2 gap-space-xs border-2 border-on-surface bg-surface-container-low p-space-xs">
+        <div class="border border-on-surface bg-surface-container-lowest p-space-xs flex flex-col">
+          <span class="font-label-caps text-label-caps text-on-surface uppercase font-bold">STATUS</span>
+          <span class="font-code-lg text-code-lg font-bold text-on-surface">${f.status}</span>
+        </div>
+        <div class="border border-on-surface bg-surface-container-lowest p-space-xs flex flex-col">
+          <span class="font-label-caps text-label-caps text-on-surface uppercase font-bold">SEVERITY</span>
+          <span class="font-code-lg text-code-lg font-bold text-on-surface">${f.severity}</span>
+        </div>
+        <div class="border border-on-surface bg-surface-container-lowest p-space-xs flex flex-col">
+          <span class="font-label-caps text-label-caps text-on-surface uppercase font-bold">REF UNIQUE IDS</span>
+          <span class="font-code-lg text-code-lg font-bold text-on-surface">${refUnique}</span>
+        </div>
+        <div class="border border-on-surface bg-surface-container-lowest p-space-xs flex flex-col">
+          <span class="font-label-caps text-label-caps text-on-surface uppercase font-bold">CUR UNIQUE IDS</span>
+          <span class="font-code-lg text-code-lg font-bold text-on-surface">${curUnique}</span>
+        </div>
+        <div class="border border-on-surface bg-surface-container-lowest p-space-xs flex flex-col">
+          <span class="font-label-caps text-label-caps text-on-surface uppercase font-bold">REF MISSING</span>
+          <span class="font-code-lg text-code-lg font-bold text-on-surface">${refMissing}</span>
+        </div>
+        <div class="border border-on-surface bg-surface-container-lowest p-space-xs flex flex-col ${f.current_missing_count > 0 ? 'text-[#ba1a1a]' : ''}">
+          <span class="font-label-caps text-label-caps text-on-surface uppercase font-bold">CUR MISSING</span>
+          <span class="font-code-lg text-code-lg font-bold">${curMissing}</span>
+        </div>
+      </div>
+    </div>
+    ` + _renderCommonDrawerBottomTpl(f, threshold, over, explanation);
+  } else if (f.type === 'categorical') {
     let catRows = '';
     if (f.category_distribution && f.category_distribution.categories) {
       for (let i = 0; i < f.category_distribution.categories.length; i++) {
         catRows += `
           <tr class="border-b border-on-surface/20 hover:bg-black/5">
-            <td class="py-1 px-2 border-r border-on-surface/20">${f.category_distribution.categories[i]}</td>
+            <td class="py-1 px-2 border-r border-on-surface/20 font-bold">${f.category_distribution.categories[i]}</td>
             <td class="py-1 px-2 border-r border-on-surface/20 text-right">${f.category_distribution.reference_percentages[i].toFixed(1)}%</td>
-            <td class="py-1 px-2 text-right">${f.category_distribution.current_percentages[i].toFixed(1)}%</td>
+            <td class="py-1 px-2 text-right font-bold">${f.category_distribution.current_percentages[i].toFixed(1)}%</td>
           </tr>`;
       }
     }
+
+    const refUnique = f.reference_unique_count !== null && f.reference_unique_count !== undefined ? f.reference_unique_count : 'N/A';
+    const curUnique = f.current_unique_count !== null && f.current_unique_count !== undefined ? f.current_unique_count : 'N/A';
+    const refMode = f.reference_mode || 'N/A';
+    const curMode = f.current_mode || 'N/A';
+    const refModeCount = f.reference_mode_count !== null && f.reference_mode_count !== undefined ? f.reference_mode_count.toLocaleString() : 'N/A';
+    const curModeCount = f.current_mode_count !== null && f.current_mode_count !== undefined ? f.current_mode_count.toLocaleString() : 'N/A';
+    const refModePct = f.reference_mode_percent !== null && f.reference_mode_percent !== undefined ? f.reference_mode_percent.toFixed(1) + '%' : 'N/A';
+    const curModePct = f.current_mode_percent !== null && f.current_mode_percent !== undefined ? f.current_mode_percent.toFixed(1) + '%' : 'N/A';
 
     return `
     <div>
@@ -636,6 +1109,29 @@ function _renderDrawerContent(f, threshold) {
     </div>
     
     <div class="border-[2px] border-on-surface bg-surface-container-lowest shadow-[3px_3px_0px_#1c1b1b] mt-space-sm mb-space-sm">
+      <div class="bg-surface-container-highest border-b-2 border-on-surface p-space-xs font-label-caps font-bold uppercase text-on-surface flex items-center justify-between">
+        <span>CATEGORICAL PROFILE COMPARISON</span>
+        <span class="text-[10px] text-on-surface-variant">REF vs CUR</span>
+      </div>
+      <table class="w-full text-left border-collapse font-code-sm text-code-sm">
+        <thead class="border-b-2 border-on-surface bg-surface-container-low">
+          <tr>
+            <th class="py-1 px-2 border-r-2 border-on-surface">STATISTIC</th>
+            <th class="py-1 px-2 border-r-2 border-on-surface text-right">REFERENCE</th>
+            <th class="py-1 px-2 text-right">CURRENT</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-on-surface/20">
+          <tr><td class="py-1 px-2 border-r font-bold">Distinct Categories</td><td class="py-1 px-2 border-r text-right">${refUnique}</td><td class="py-1 px-2 text-right">${curUnique}</td></tr>
+          <tr><td class="py-1 px-2 border-r font-bold">Most Frequent (Mode)</td><td class="py-1 px-2 border-r text-right font-bold">${refMode}</td><td class="py-1 px-2 text-right font-bold">${curMode}</td></tr>
+          <tr><td class="py-1 px-2 border-r font-bold">Mode Frequency</td><td class="py-1 px-2 border-r text-right">${refModeCount}</td><td class="py-1 px-2 text-right">${curModeCount}</td></tr>
+          <tr><td class="py-1 px-2 border-r font-bold">Mode Percentage</td><td class="py-1 px-2 border-r text-right">${refModePct}</td><td class="py-1 px-2 text-right">${curModePct}</td></tr>
+          <tr><td class="py-1 px-2 border-r font-bold">Missing Values</td><td class="py-1 px-2 border-r text-right">${f.reference_missing_count} (${f.reference_missing_percent.toFixed(2)}%)</td><td class="py-1 px-2 text-right">${f.current_missing_count} (${f.current_missing_percent.toFixed(2)}%)</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="border-[2px] border-on-surface bg-surface-container-lowest shadow-[3px_3px_0px_#1c1b1b] mt-space-sm mb-space-sm">
       <div class="bg-surface-container-highest border-b-2 border-on-surface p-space-xs font-label-caps font-bold uppercase text-on-surface">
         DISTRIBUTION COMPARISON
       </div>
@@ -647,28 +1143,44 @@ function _renderDrawerContent(f, threshold) {
             <th class="py-1 px-2 text-right">CURRENT</th>
           </tr>
         </thead>
-        <tbody>
+        <tbody class="divide-y divide-on-surface/20">
           ${catRows}
         </tbody>
       </table>
     </div>
     ` + _renderCommonDrawerBottomTpl(f, threshold, over, '');
   } else {
-    const refMean = f.reference_mean !== null && f.reference_mean !== undefined ? f.reference_mean.toFixed(4) : 'N/A';
-    const curMean = f.current_mean   !== null && f.current_mean   !== undefined ? f.current_mean.toFixed(4)   : 'N/A';
+    const _f = (val, digits = 4) => (val !== null && val !== undefined) ? Number(val).toFixed(digits) : 'N/A';
+    const refMean = _f(f.reference_mean);
+    const curMean = _f(f.current_mean);
     const delta   = f.mean_change_percent !== null && f.mean_change_percent !== undefined
       ? (f.mean_change_percent >= 0 ? '+' : '') + f.mean_change_percent.toFixed(1) + '%'
       : 'N/A';
-    const ks      = f.ks_statistic !== null && f.ks_statistic !== undefined ? f.ks_statistic.toFixed(4) : 'N/A';
+    const ks      = _f(f.ks_statistic);
     
     let ksPval = 'N/A';
     if (f.type === 'numeric' && f.ks_p_value !== null && f.ks_p_value !== undefined) {
       ksPval = f.ks_p_value < 0.0001 ? '<0.0001' : f.ks_p_value.toFixed(4);
     }
     
-    const wass    = f.wasserstein_distance !== null && f.wasserstein_distance !== undefined ? f.wasserstein_distance.toFixed(4) : 'N/A';
+    const wass    = _f(f.wasserstein_distance);
+    const refMedian = _f(f.reference_median);
+    const curMedian = _f(f.current_median);
+    const refStd = _f(f.reference_std);
+    const curStd = _f(f.current_std);
+    const refVar = _f(f.reference_variance);
+    const curVar = _f(f.current_variance);
+    const refMin = _f(f.reference_min);
+    const curMin = _f(f.current_min);
+    const refMax = _f(f.reference_max);
+    const curMax = _f(f.current_max);
+    const refQ25 = _f(f.reference_q25);
+    const curQ25 = _f(f.current_q25);
+    const refQ75 = _f(f.reference_q75);
+    const curQ75 = _f(f.current_q75);
+    const refIQR = _f(f.reference_iqr);
+    const curIQR = _f(f.current_iqr);
     
-    const metricDisplay = `registered a PSI of <strong class="font-bold ${over ? 'text-[#BA1A1A]' : ''}">${f.psi.toFixed(4)}</strong>`;
     const meanDisplay = ` Reference mean: ${refMean} → Current mean: ${curMean} (${delta}).`;
 
     return `
@@ -703,6 +1215,34 @@ function _renderDrawerContent(f, threshold) {
           <span class="font-code-sm text-[9px] text-on-surface-variant">L1 DISTANCE</span>
         </div>
       </div>
+    </div>
+
+    <div class="border-[2px] border-on-surface bg-surface-container-lowest shadow-[3px_3px_0px_#1c1b1b] mt-space-sm mb-space-sm">
+      <div class="bg-surface-container-highest border-b-2 border-on-surface p-space-xs font-label-caps font-bold uppercase text-on-surface flex items-center justify-between">
+        <span>NUMERICAL STATISTICAL PROFILE</span>
+        <span class="text-[10px] text-on-surface-variant">REF vs CUR</span>
+      </div>
+      <table class="w-full text-left border-collapse font-code-sm text-code-sm">
+        <thead class="border-b-2 border-on-surface bg-surface-container-low">
+          <tr>
+            <th class="py-1 px-2 border-r-2 border-on-surface">STATISTIC</th>
+            <th class="py-1 px-2 border-r-2 border-on-surface text-right">REFERENCE</th>
+            <th class="py-1 px-2 text-right">CURRENT</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-on-surface/20">
+          <tr><td class="py-1 px-2 border-r font-bold">Mean</td><td class="py-1 px-2 border-r text-right">${refMean}</td><td class="py-1 px-2 text-right">${curMean}</td></tr>
+          <tr><td class="py-1 px-2 border-r font-bold">Median</td><td class="py-1 px-2 border-r text-right">${refMedian}</td><td class="py-1 px-2 text-right">${curMedian}</td></tr>
+          <tr><td class="py-1 px-2 border-r font-bold">Std Dev (ddof=1)</td><td class="py-1 px-2 border-r text-right">${refStd}</td><td class="py-1 px-2 text-right">${curStd}</td></tr>
+          <tr><td class="py-1 px-2 border-r font-bold">Variance (ddof=1)</td><td class="py-1 px-2 border-r text-right">${refVar}</td><td class="py-1 px-2 text-right">${curVar}</td></tr>
+          <tr><td class="py-1 px-2 border-r font-bold">Minimum</td><td class="py-1 px-2 border-r text-right">${refMin}</td><td class="py-1 px-2 text-right">${curMin}</td></tr>
+          <tr><td class="py-1 px-2 border-r font-bold">Maximum</td><td class="py-1 px-2 border-r text-right">${refMax}</td><td class="py-1 px-2 text-right">${curMax}</td></tr>
+          <tr><td class="py-1 px-2 border-r font-bold">25th Percentile (Q25)</td><td class="py-1 px-2 border-r text-right">${refQ25}</td><td class="py-1 px-2 text-right">${curQ25}</td></tr>
+          <tr><td class="py-1 px-2 border-r font-bold">75th Percentile (Q75)</td><td class="py-1 px-2 border-r text-right">${refQ75}</td><td class="py-1 px-2 text-right">${curQ75}</td></tr>
+          <tr><td class="py-1 px-2 border-r font-bold">IQR (Q75 - Q25)</td><td class="py-1 px-2 border-r text-right">${refIQR}</td><td class="py-1 px-2 text-right">${curIQR}</td></tr>
+          <tr><td class="py-1 px-2 border-r font-bold">Missing Values</td><td class="py-1 px-2 border-r text-right">${f.reference_missing_count} (${f.reference_missing_percent.toFixed(2)}%)</td><td class="py-1 px-2 text-right">${f.current_missing_count} (${f.current_missing_percent.toFixed(2)}%)</td></tr>
+        </tbody>
+      </table>
     </div>
     ` + _renderCommonDrawerBottomTpl(f, threshold, over, meanDisplay);
   }

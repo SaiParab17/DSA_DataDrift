@@ -290,3 +290,113 @@ class TestDriftEngineResponse:
         assert result.schema.reference_only_columns == ["old"]
         assert result.schema.current_only_columns == ["new"]
         assert result.schema.common_columns == 2
+
+
+class TestNumericalProfiling:
+    def test_numerical_profile_statistics_accuracy(self):
+        # Known numbers: 10, 20, 30, 40, 50
+        # Mean = 30.0, Median = 30.0
+        # Sample std (ddof=1) = sqrt(250) ≈ 15.8114, Sample variance = 250.0
+        # Min = 10.0, Max = 50.0
+        # Q25 = 20.0, Q75 = 40.0, IQR = 20.0
+        ref = pd.DataFrame({"val": [10.0, 20.0, 30.0, 40.0, 50.0]})
+        cur = pd.DataFrame({"val": [15.0, 25.0, 35.0, 45.0, 55.0]})
+        engine = DriftEngine()
+        result = engine.analyze(ref, cur)
+        f = next(x for x in result.features if x.name == "val")
+        assert f.reference_mean == pytest.approx(30.0, abs=1e-3)
+        assert f.reference_median == pytest.approx(30.0, abs=1e-3)
+        assert f.reference_std == pytest.approx(15.8114, abs=1e-3)
+        assert f.reference_variance == pytest.approx(250.0, abs=1e-3)
+        assert f.reference_min == 10.0
+        assert f.reference_max == 50.0
+        assert f.reference_q25 == pytest.approx(20.0, abs=1e-3)
+        assert f.reference_q75 == pytest.approx(40.0, abs=1e-3)
+        assert f.reference_iqr == pytest.approx(20.0, abs=1e-3)
+
+    def test_all_missing_numeric_column_returns_none(self):
+        ref = pd.DataFrame({"val": [np.nan, np.nan, np.nan]})
+        cur = pd.DataFrame({"val": [np.nan, np.nan, np.nan]})
+        engine = DriftEngine()
+        result = engine.analyze(ref, cur)
+        f = next(x for x in result.features if x.name == "val")
+        assert f.reference_mean is None
+        assert f.reference_std is None
+        assert f.reference_variance is None
+        assert f.reference_median is None
+        assert f.reference_min is None
+        assert f.reference_max is None
+
+    def test_single_value_sample_std_returns_none(self):
+        stats = DriftEngine._compute_numeric_stats(pd.Series([42.0]))
+        assert stats["mean"] == 42.0
+        assert stats["std"] is None
+        assert stats["variance"] is None
+
+
+class TestCategoricalProfiling:
+    def test_categorical_profile_statistics(self):
+        # 6 items: "A", "A", "A", "B", "B", "C"
+        # Unique count: 3
+        # Mode: "A", Mode count: 3, Mode percent: 3/6 = 50.0%
+        ref = pd.DataFrame({"group": ["A", "A", "A", "B", "B", "C"]})
+        cur = pd.DataFrame({"group": ["B", "B", "B", "B", "A", "C"]})
+        engine = DriftEngine()
+        result = engine.analyze(ref, cur)
+        f = next(x for x in result.features if x.name == "group")
+        assert f.reference_unique_count == 3
+        assert f.reference_mode == "A"
+        assert f.reference_mode_count == 3
+        assert f.reference_mode_percent == 50.0
+        assert f.current_mode == "B"
+        assert f.current_mode_count == 4
+        assert f.current_mode_percent == pytest.approx(66.67, abs=0.01)
+
+    def test_categorical_mode_alphabetical_tie_breaker(self):
+        # Tied: "Z" and "A" both have count 2
+        ref = pd.DataFrame({"group": ["Z", "Z", "A", "A"]})
+        cur = pd.DataFrame({"group": ["Z", "Z", "A", "A"]})
+        engine = DriftEngine()
+        result = engine.analyze(ref, cur)
+        f = next(x for x in result.features if x.name == "group")
+        assert f.reference_mode == "A"
+        assert f.reference_mode_count == 2
+        assert f.reference_mode_percent == 50.0
+
+
+class TestDatasetLevelProfiling:
+    def test_dataset_profile_metrics(self):
+        ref = pd.DataFrame({
+            "id": [1, 2, 3, 4, 5, 6],
+            "num": [10.0, 20.0, 30.0, 40.0, 50.0, np.nan],
+            "cat": ["x", "y", "x", "y", "x", np.nan],
+        })
+        cur = pd.DataFrame({
+            "id": [1, 1, 2, 3, 4, 5],
+            "num": [10.0, 10.0, 20.0, 30.0, 40.0, 50.0],
+            "cat": ["x", "x", "y", "z", "x", "y"],
+        })
+        engine = DriftEngine()
+        result = engine.analyze(ref, cur)
+        assert result.profile is not None
+        ref_p = result.profile.reference
+        cur_p = result.profile.current
+
+        assert ref_p.rows == 6
+        assert ref_p.columns == 3
+        assert ref_p.numeric_columns == 1
+        assert ref_p.categorical_columns == 1
+        assert ref_p.identifier_columns == 1
+        # Total cells = 6 * 3 = 18. Missing cells = 2 (1 in num, 1 in cat).
+        assert ref_p.missing_cells == 2
+        assert ref_p.missing_cell_percent == pytest.approx(11.11, abs=0.01)
+        assert ref_p.duplicate_rows == 0
+        assert ref_p.duplicate_row_percent == 0.0
+        assert ref_p.memory_usage_bytes > 0
+
+        assert cur_p.rows == 6
+        assert cur_p.duplicate_rows == 1
+        assert cur_p.duplicate_row_percent == pytest.approx(16.67, abs=0.01)
+        assert cur_p.missing_cells == 0
+        assert cur_p.missing_cell_percent == 0.0
+

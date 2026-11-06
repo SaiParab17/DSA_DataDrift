@@ -14,13 +14,19 @@ const API_BASE = import.meta.env?.VITE_API_BASE_URL ?? 'http://localhost:8000';
  * @param {File}   referenceFile
  * @param {File}   currentFile
  * @param {number} psiThreshold
+ * @param {boolean} [runModelImpact=false]
+ * @param {string|null} [targetColumn=null]
  * @returns {Promise<DriftAnalysisResult>}
  */
-export async function analyzeDrift(referenceFile, currentFile, psiThreshold = 0.25) {
+export async function analyzeDrift(referenceFile, currentFile, psiThreshold = 0.25, runModelImpact = false, targetColumn = null) {
   const form = new FormData();
   form.append('reference_file', referenceFile);
   form.append('current_file',   currentFile);
   form.append('psi_threshold',  String(psiThreshold));
+  form.append('run_model_impact', String(Boolean(runModelImpact)));
+  if (targetColumn) {
+    form.append('target_column', String(targetColumn));
+  }
 
   const response = await fetch(`${API_BASE}/api/drift/analyze`, {
     method: 'POST',

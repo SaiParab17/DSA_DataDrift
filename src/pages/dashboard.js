@@ -118,6 +118,64 @@ ${renderNav('dashboard')}
       </div>
     </div>
 
+    <!-- Model Impact Dashboard Card (Only when COMPLETED) -->
+    ${result.model_impact && result.model_impact.status === 'COMPLETED' ? `
+    <div class="border-[3.5px] border-on-surface bg-surface-card p-6 shadow-[5px_5px_0px_#111111] flex flex-col gap-4">
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b-2 border-on-surface pb-3">
+        <div class="flex items-center gap-2">
+          <span class="material-symbols-outlined text-[22px] text-on-surface">model_training</span>
+          <h3 class="font-display text-xl font-extrabold uppercase tracking-tight text-on-surface">
+            ML MODEL IMPACT SUMMARY (${result.model_impact.model_name})
+          </h3>
+        </div>
+        <div class="flex items-center gap-2 font-mono text-xs font-bold">
+          <span class="bg-primary-container px-2 py-0.5 border border-on-surface uppercase">TARGET: ${result.model_impact.target_column}</span>
+          <span class="${result.model_impact.verdict === 'PERFORMANCE DECREASE OBSERVED' ? 'bg-[#FF5277]' : 'bg-[#00D26A]'} px-2 py-0.5 border border-on-surface uppercase">${result.model_impact.verdict}</span>
+        </div>
+      </div>
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 font-mono text-center">
+        <div class="border-2 border-on-surface bg-white p-3">
+          <div class="text-xs uppercase text-on-surface/70 font-bold">HOLDOUT F1</div>
+          <div class="text-2xl font-black text-on-surface mt-1">${result.model_impact.reference_metrics ? (result.model_impact.reference_metrics.f1_score * 100).toFixed(1) : 0}%</div>
+          <div class="text-[10px] text-on-surface/60">Macro-averaged</div>
+        </div>
+        <div class="border-2 border-on-surface bg-white p-3">
+          <div class="text-xs uppercase text-on-surface/70 font-bold">CURRENT F1</div>
+          <div class="text-2xl font-black text-on-surface mt-1">${result.model_impact.current_metrics ? (result.model_impact.current_metrics.f1_score * 100).toFixed(1) : 0}%</div>
+          <div class="text-[10px] text-on-surface/60">Production batch</div>
+        </div>
+        <div class="border-2 border-on-surface bg-white p-3">
+          <div class="text-xs uppercase text-on-surface/70 font-bold">F1 CHANGE</div>
+          <div class="text-2xl font-black ${(result.model_impact.metric_changes_percentage_points?.f1_score ?? 0) < -5 ? 'text-[#ba1a1a]' : ((result.model_impact.metric_changes_percentage_points?.f1_score ?? 0) < 0 ? 'text-[#b58b00]' : 'text-[#008744]')} mt-1">
+            ${result.model_impact.metric_changes_percentage_points?.f1_score !== undefined ? (result.model_impact.metric_changes_percentage_points.f1_score >= 0 ? '+' : '') + result.model_impact.metric_changes_percentage_points.f1_score.toFixed(2) + ' pp' : 'N/A'}
+          </div>
+          <div class="text-[10px] text-on-surface/60">Percentage points</div>
+        </div>
+        <div class="border-2 border-on-surface bg-white p-3">
+          <div class="text-xs uppercase text-on-surface/70 font-bold">ACCURACY CHANGE</div>
+          <div class="text-2xl font-black ${(result.model_impact.metric_changes_percentage_points?.accuracy ?? 0) < -5 ? 'text-[#ba1a1a]' : ((result.model_impact.metric_changes_percentage_points?.accuracy ?? 0) < 0 ? 'text-[#b58b00]' : 'text-[#008744]')} mt-1">
+            ${result.model_impact.metric_changes_percentage_points?.accuracy !== undefined ? (result.model_impact.metric_changes_percentage_points.accuracy >= 0 ? '+' : '') + result.model_impact.metric_changes_percentage_points.accuracy.toFixed(2) + ' pp' : 'N/A'}
+          </div>
+          <div class="text-[10px] text-on-surface/60">Ref: ${result.model_impact.reference_metrics ? (result.model_impact.reference_metrics.accuracy * 100).toFixed(1) + '%' : 'N/A'} → Cur: ${result.model_impact.current_metrics ? (result.model_impact.current_metrics.accuracy * 100).toFixed(1) + '%' : 'N/A'}</div>
+        </div>
+      </div>
+      <p class="font-body text-sm font-semibold text-on-surface/80 m-0">
+        ${result.model_impact.interpretation || ''}
+      </p>
+    </div>
+    ` : `
+    <div class="border-[2.5px] border-dashed border-on-surface/50 bg-[#FAF7EE] p-4 flex flex-col sm:flex-row items-center justify-between gap-3 text-on-surface">
+      <div class="flex items-center gap-2">
+        <span class="material-symbols-outlined text-on-surface/60">model_training</span>
+        <span class="font-mono text-xs font-bold uppercase text-on-surface/70">ML MODEL IMPACT: NOT EVALUATED IN LATEST ANALYSIS</span>
+      </div>
+      <a href="#/analyze" class="font-mono text-xs font-extrabold uppercase bg-white border border-on-surface px-3 py-1 shadow-[2px_2px_0px_#111111] hover:bg-brand-yellow transition-all">
+        CONFIGURE IN ANALYZE →
+      </a>
+    </div>
+    `}
+
+
     <!-- Feature Drift Table -->
     <div class="flex flex-col gap-3">
       <div class="flex items-center justify-between">

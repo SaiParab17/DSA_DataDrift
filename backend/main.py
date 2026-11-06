@@ -3,6 +3,8 @@ DataWatch FastAPI application entry point.
 """
 from __future__ import annotations
 
+import quality.patch  # MUST be first to monkeypatch pydantic
+
 import logging
 import os
 from contextlib import asynccontextmanager

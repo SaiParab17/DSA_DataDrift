@@ -6,7 +6,10 @@
  * falling back to http://localhost:8000 for local development.
  */
 
-const API_BASE = import.meta.env?.VITE_API_BASE_URL ?? 'http://localhost:8000';
+const rawApiBase = import.meta.env?.VITE_API_BASE_URL;
+const API_BASE = (rawApiBase && rawApiBase.trim() !== '')
+  ? rawApiBase.trim().replace(/\/+$/, '')
+  : 'http://localhost:8000';
 
 /**
  * Analyze drift between two CSV files.
@@ -52,11 +55,67 @@ export async function analyzeDrift(referenceFile, currentFile, psiThreshold = 0.
  */
 export async function checkBackendHealth() {
   try {
-    const r = await fetch(`${API_BASE}/health`, { signal: AbortSignal.timeout(3000) });
+    const r = await fetch(`${API_BASE}/health`, { signal: AbortSignal.timeout(5000) });
     return r.ok;
   } catch (_) {
     return false;
   }
+}
+
+/**
+ * Fetch paginated historical analysis runs.
+ * @param {number} [limit=20]
+ * @param {number} [offset=0]
+ * @returns {Promise<Array<object>>}
+ */
+export async function fetchAnalysisRuns(limit = 20, offset = 0) {
+  const response = await fetch(`${API_BASE}/api/drift/runs?limit=${limit}&offset=${offset}`);
+  if (!response.ok) {
+    let detail = `HTTP ${response.status}`;
+    try {
+      const body = await response.json();
+      detail = body.detail ?? detail;
+    } catch (_) {}
+    throw new DriftApiError(detail, response.status);
+  }
+  return await response.json();
+}
+
+/**
+ * Fetch a specific analysis run by its UUID.
+ * @param {string} runId
+ * @returns {Promise<object>}
+ */
+export async function fetchAnalysisRunById(runId) {
+  const response = await fetch(`${API_BASE}/api/drift/runs/${encodeURIComponent(runId)}`);
+  if (!response.ok) {
+    let detail = `HTTP ${response.status}`;
+    try {
+      const body = await response.json();
+      detail = body.detail ?? detail;
+    } catch (_) {}
+    throw new DriftApiError(detail, response.status);
+  }
+  return await response.json();
+}
+
+/**
+ * Compare two analysis runs side-by-side.
+ * @param {string} runId1
+ * @param {string} runId2
+ * @returns {Promise<object>}
+ */
+export async function compareAnalysisRuns(runId1, runId2) {
+  const response = await fetch(`${API_BASE}/api/drift/runs/compare?run_id_1=${encodeURIComponent(runId1)}&run_id_2=${encodeURIComponent(runId2)}`);
+  if (!response.ok) {
+    let detail = `HTTP ${response.status}`;
+    try {
+      const body = await response.json();
+      detail = body.detail ?? detail;
+    } catch (_) {}
+    throw new DriftApiError(detail, response.status);
+  }
+  return await response.json();
 }
 
 // ---------------------------------------------------------------------------

@@ -49,5 +49,6 @@ function updateNavActive(route) {
   });
 }
 
+window.__dwNavigate = navigate;
 window.addEventListener('hashchange', navigate);
 navigate();

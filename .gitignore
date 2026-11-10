@@ -30,3 +30,13 @@ __pycache__/
 .pytest_cache/
 .venv/
 venv/
+
+# Environment variables & secrets
+.env
+*.env
+!.env.example
+
+# Local SQLite databases
+*.db
+*.sqlite
+*.sqlite3

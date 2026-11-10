@@ -12,10 +12,76 @@ function _fmt(val, digits = 4) {
   return (val !== null && val !== undefined) ? Number(val).toFixed(digits) : 'N/A';
 }
 
+function _getRunIdFromHash() {
+  const hash = window.location.hash || '';
+  const qIdx = hash.indexOf('?');
+  if (qIdx === -1) return null;
+  const params = new URLSearchParams(hash.slice(qIdx + 1));
+  return params.get('id');
+}
+
 export function renderResults() {
+  const runId = _getRunIdFromHash();
   const result = state.latestResult;
 
-  // ---- No result yet ----
+  // ---- Case 1: Specific historical runId requested that is not yet loaded into state ----
+  if (runId && (!result || result.analysis_id !== runId)) {
+    return `
+${renderNav('results')}
+<main class="w-full pt-20 bg-surface min-h-[calc(100vh-140px)] flex flex-col items-center justify-center">
+  <div id="results-loading-box" class="max-w-xl w-full mx-auto px-gutter flex flex-col items-center gap-space-xl py-space-xl">
+    <div class="border-[4px] border-on-surface bg-surface-container-high p-space-xl shadow-[8px_8px_0px_#1c1b1b] flex flex-col items-center gap-space-md text-center w-full">
+      <span class="material-symbols-outlined text-[64px] text-on-surface animate-spin">sync</span>
+      <div class="font-label-caps text-label-caps bg-primary-container px-2 py-0.5 border border-on-surface uppercase font-bold">DATABASE QUERY</div>
+      <h1 class="font-headline-lg text-headline-lg uppercase text-on-surface font-bold tracking-tight">RETRIEVING HISTORICAL RUN</h1>
+      <p class="font-code-sm text-code-sm text-on-surface-variant break-all">RUN_ID: ${runId}</p>
+      <p class="font-body-md text-body-md text-on-surface-variant max-w-sm">
+        Querying database for statistical metrics, Great Expectations validation, and ML model evaluation...
+      </p>
+    </div>
+  </div>
+</main>
+${renderFooter()}
+
+<script data-page="results">
+(async function loadHistoricalRun() {
+  const loadingBox = document.getElementById('results-loading-box');
+  try {
+    const { fetchAnalysisRunById } = await import('/src/api/client.js');
+    const { persistResult } = await import('/src/state/store.js');
+    const data = await fetchAnalysisRunById('${runId}');
+    persistResult(data);
+    if (window.__dwNavigate) {
+      window.__dwNavigate();
+    } else {
+      window.dispatchEvent(new Event('hashchange'));
+    }
+  } catch (err) {
+    if (loadingBox) {
+      loadingBox.innerHTML = \`
+        <div class="border-[4px] border-on-surface bg-[#FFE5EC] p-space-xl shadow-[8px_8px_0px_#1c1b1b] flex flex-col items-center gap-space-md text-center w-full">
+          <span class="material-symbols-outlined text-[64px] text-[#ba1a1a]">error</span>
+          <div class="font-label-caps text-label-caps bg-[#ba1a1a] text-white px-2 py-0.5 uppercase font-bold">NOT FOUND / ERROR</div>
+          <h1 class="font-headline-lg text-headline-lg uppercase text-[#ba1a1a] font-bold tracking-tight">CANNOT LOAD ANALYSIS</h1>
+          <p class="font-body-md text-body-md text-on-surface max-w-sm font-semibold">
+            \${err.message || 'Analysis run not found or database error'}.
+          </p>
+          <div class="flex gap-3 mt-4">
+            <a href="#/dashboard" class="bg-surface text-on-surface border-[2px] border-on-surface font-headline-sm uppercase px-4 py-2 font-bold shadow-[3px_3px_0px_#1c1b1b]">
+              ← BACK TO DASHBOARD
+            </a>
+            <a href="#/analyze" class="bg-primary-container text-on-surface border-[2px] border-on-surface font-headline-sm uppercase px-4 py-2 font-bold shadow-[3px_3px_0px_#1c1b1b]">
+              RUN NEW ANALYSIS →
+            </a>
+          </div>
+        </div>\`;
+    }
+  }
+})();
+</script>`;
+  }
+
+  // ---- Case 2: No result yet and no runId in URL ----
   if (!result) {
     return `
 ${renderNav('results')}

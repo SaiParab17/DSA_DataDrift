@@ -13,31 +13,37 @@ from sqlalchemy.ext.asyncio import (
 )
 from sqlalchemy.orm import declarative_base
 
+try:
+    from utils.db_url import DEFAULT_DATABASE_URL, normalize_database_url
+except ImportError:
+    from backend.utils.db_url import DEFAULT_DATABASE_URL, normalize_database_url
+
 load_dotenv()
 
-# Read DATABASE_URL or default to local async SQLite
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///./datawatch.db")
 
-# Normalize Postgres driver scheme from providers like Render, Supabase, Neon
-if DATABASE_URL.startswith("postgres://"):
-    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql+asyncpg://", 1)
-elif DATABASE_URL.startswith("postgresql://") and not DATABASE_URL.startswith("postgresql+asyncpg://"):
-    DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://", 1)
+def create_configured_async_engine(database_url: str | None = None):
+    """
+    Resolve, normalize, and build an async SQLAlchemy engine using the shared
+    URL normalization logic and driver-appropriate pooling/connect arguments.
+    """
+    resolved_url = normalize_database_url(
+        database_url or os.getenv("DATABASE_URL") or DEFAULT_DATABASE_URL
+    )
+    kwargs: dict = {}
+    if resolved_url.startswith("sqlite"):
+        kwargs["connect_args"] = {"check_same_thread": False}
+    else:
+        # Production connection pool parameters for PostgreSQL
+        kwargs.update({
+            "pool_size": 10,
+            "max_overflow": 20,
+            "pool_recycle": 1800,
+            "pool_pre_ping": True,
+        })
+    return resolved_url, create_async_engine(resolved_url, echo=False, **kwargs)
 
-# Driver-specific engine configurations
-engine_kwargs: dict = {}
-if "sqlite" in DATABASE_URL:
-    engine_kwargs["connect_args"] = {"check_same_thread": False}
-else:
-    # Production connection pool parameters for PostgreSQL
-    engine_kwargs.update({
-        "pool_size": 10,
-        "max_overflow": 20,
-        "pool_recycle": 1800,
-        "pool_pre_ping": True,
-    })
 
-engine = create_async_engine(DATABASE_URL, echo=False, **engine_kwargs)
+DATABASE_URL, engine = create_configured_async_engine()
 
 AsyncSessionLocal = async_sessionmaker(
     bind=engine,

@@ -25,9 +25,11 @@ load_dotenv(os.path.join(BACKEND_DIR, ".env"))
 try:
     from database import Base
     import models.db_models  # noqa: F401 - register models with Base.metadata
+    from utils.db_url import DEFAULT_DATABASE_URL, normalize_database_url
 except ImportError:
     from backend.database import Base
     import backend.models.db_models  # noqa: F401
+    from backend.utils.db_url import DEFAULT_DATABASE_URL, normalize_database_url
 
 config = context.config
 
@@ -37,14 +39,13 @@ if config.config_file_name is not None:
 
 target_metadata = Base.metadata
 
-# Read DATABASE_URL from environment or fallback to local SQLite
-database_url = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///./datawatch.db")
-if database_url.startswith("postgres://"):
-    database_url = database_url.replace("postgres://", "postgresql+asyncpg://", 1)
-elif database_url.startswith("postgresql://") and not database_url.startswith("postgresql+asyncpg://"):
-    database_url = database_url.replace("postgresql://", "postgresql+asyncpg://", 1)
+# Read and normalize DATABASE_URL from environment or fallback to local SQLite
+database_url = normalize_database_url(
+    os.getenv("DATABASE_URL") or DEFAULT_DATABASE_URL
+)
 
-config.set_main_option("sqlalchemy.url", database_url)
+# Escape '%' so ConfigParser interpolation inside Alembic Config preserves encoded passwords
+config.set_main_option("sqlalchemy.url", database_url.replace("%", "%%"))
 
 
 def run_migrations_offline() -> None:
@@ -62,10 +63,11 @@ def run_migrations_offline() -> None:
 
 
 def do_run_migrations(connection: Connection) -> None:
+    current_url = config.get_main_option("sqlalchemy.url") or ""
     context.configure(
         connection=connection,
         target_metadata=target_metadata,
-        render_as_batch="sqlite" in config.get_main_option("sqlalchemy.url"),
+        render_as_batch=current_url.startswith("sqlite"),
     )
 
     with context.begin_transaction():

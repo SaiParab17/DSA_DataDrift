@@ -47,8 +47,8 @@ ${renderFooter()}
 (async function loadHistoricalRun() {
   const loadingBox = document.getElementById('results-loading-box');
   try {
-    const { fetchAnalysisRunById } = await import('/src/api/client.js');
-    const { persistResult } = await import('/src/state/store.js');
+    const { fetchAnalysisRunById } = __dw.api;
+    const { persistResult } = __dw.store;
     const data = await fetchAnalysisRunById('${runId}');
     persistResult(data);
     if (window.__dwNavigate) {

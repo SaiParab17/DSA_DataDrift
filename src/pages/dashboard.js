@@ -135,7 +135,7 @@ ${renderNav('dashboard')}
   const countBadge = document.getElementById('history-runs-count');
 
   try {
-    const { fetchAnalysisRuns } = await import('/src/api/client.js');
+    const { fetchAnalysisRuns } = __dw.api;
     const runs = await fetchAnalysisRuns(20, 0);
 
     if (!runs || runs.length === 0) {

@@ -2,6 +2,26 @@ import { renderHome }      from './pages/home.js';
 import { renderDashboard } from './pages/dashboard.js';
 import { renderAnalyze }   from './pages/analyze.js';
 import { renderResults }   from './pages/results.js';
+import {
+  analyzeDrift,
+  checkBackendHealth,
+  fetchAnalysisRuns,
+  fetchAnalysisRunById,
+} from './api/client.js';
+import state, { persistResult } from './state/store.js';
+
+const pageContext = Object.freeze({
+  api: Object.freeze({
+    analyzeDrift,
+    checkBackendHealth,
+    fetchAnalysisRuns,
+    fetchAnalysisRunById,
+  }),
+  store: Object.freeze({
+    state,
+    persistResult,
+  }),
+});
 
 const root = document.getElementById('app-root');
 
@@ -23,11 +43,11 @@ function navigate() {
       case 'results':   root.innerHTML = renderResults();   break;
       default:          root.innerHTML = renderHome();       break;
     }
-    // Re-run page-specific scripts
+    // Re-run page-specific scripts with bundled runtime modules injected
     const scripts = root.querySelectorAll('script[data-page]');
     scripts.forEach(s => {
-      const fn = new Function(s.textContent); // eslint-disable-line no-new-func
-      fn();
+      const fn = new Function('__dw', s.textContent); // eslint-disable-line no-new-func
+      fn(pageContext);
     });
     root.classList.remove('fade-out');
     window.scrollTo(0, 0);

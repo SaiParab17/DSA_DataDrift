@@ -557,9 +557,8 @@ ${renderFooter()}
 
     setLoading(true);
     try {
-      // Dynamic import so the API module is loaded lazily
-      const { analyzeDrift } = await import('/src/api/client.js');
-      const { persistResult, default: store } = await import('/src/state/store.js');
+      const { analyzeDrift } = __dw.api;
+      const { persistResult } = __dw.store;
       const t0 = performance.now();
       const result = await analyzeDrift(refFile, curFile, threshold, runModelImpact, targetColumn);
       const elapsed = performance.now() - t0;
@@ -586,7 +585,7 @@ ${renderFooter()}
     const daemonLabel = document.getElementById('daemon-label');
     const diagDaemon  = document.getElementById('diag-daemon');
     try {
-      const { checkBackendHealth } = await import('/src/api/client.js');
+      const { checkBackendHealth } = __dw.api;
       const t0 = performance.now();
       const ok = await checkBackendHealth();
       const latency = Math.round(performance.now() - t0);
